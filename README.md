@@ -1,7 +1,7 @@
 # Age Encrypted Notebook (aen)
 *Disclaimer: This project has the sole purpose of getting me into Go development. I just want to play around with Go a bit.*
 
-`aen` uses Age ([github.com/FiloSottile/age](https://github.com/FiloSottile/age)) to encrypt text snippets ("notes") and bolt ([github.com/etcd-io/bbolt](https://github.com/etcd-io/bbolt)) to store them in a k/v database. This can be useful for e.g. transporting encrypted data to airgapped systems without the hassle of shared keys, the DB then resides on a removable media. Obviously the only protects the notes if the removable media is at rest. On the encrypting/decrypting systems itself, the note will be availalbe unencrypted at several places (e.g. memory or in terms of note creation the `/tmp` directory).
+`aen` uses Age ([github.com/FiloSottile/age](https://github.com/FiloSottile/age)) to encrypt text snippets ("notes") and bolt ([github.com/etcd-io/bbolt](https://github.com/etcd-io/bbolt)) to store them in a k/v database. This can be useful for e.g. transporting encrypted data to airgapped systems without the hassle of shared keys (well, after an initial setup :) ), the DB then resides on a removable media. Keep in mind that creating the note with an external editor (`create` command) or editing a note in a later version of aen requires to write the note unencrypted to a file. While the file is deleted afterwards, it can be recovered as it is not overwritten with random data at this point. 
 
 ## Usage
 ```
