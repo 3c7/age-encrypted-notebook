@@ -1,14 +1,14 @@
 # Age Encrypted Notebook (aen)
 *Disclaimer: This project has the sole purpose of getting me into Go development. I just want to play around with Go a bit.*
 
-`aen` uses Age ([github.com/FiloSottile/age](https://github.com/FiloSottile/age)) to encrypt text snippets ("notes") and bolt ([github.com/etcd-io/bbolt](https://github.com/etcd-io/bbolt)) to store them in a k/v database. This can be useful for e.g. transporting encrypted data to airgapped systems without the hassle of shared keys (well, after an initial setup :) ), the DB then resides on a removable media. Keep in mind that creating the note with an external editor (`create` command) or editing a note in a later version of aen requires to write the note unencrypted to a file. While the file is deleted afterwards, it can be recovered as it is not overwritten with random data at this point. 
+`aen` uses Age ([github.com/FiloSottile/age](https://github.com/FiloSottile/age)) to encrypt text snippets ("notes") and bolt ([github.com/etcd-io/bbolt](https://github.com/etcd-io/bbolt)) to store them in a k/v database. This can be useful for e.g. transporting encrypted data to airgapped systems without the hassle of shared keys (well, after an initial setup :) ), the DB then resides on a removable media. Keep in mind that creating the note with an external editor (`create` command) or editing a note in a later version of aen requires to write the note unencrypted to a file. While the file is deleted afterwards, it can be recovered if you not choose to overwrite it with random data afterwards (`-S/--shred`).
 
 ## Usage
 ```
-Age Encrypted Notebook v0.0.2-1-g2f9fe20
+Age Encrypted Notebook (devel)
 
 * DB and keyfile paths can also be given via evironment variables AENDB and AENKEY.
-** The default editor can be changed setting the environment variable AENEDITOR.
+** The default editor can be changed through setting the environment variable AENEDITOR.
 
 Usage:
 
@@ -19,8 +19,18 @@ aen init          Initializes the private key and the database if not already gi
 aen list          Lists the slugs of available notes sorted by their timestamp
   -d, --db        - Path to DB *
 
-aen create        Creates a new note with an editor - by default the command calls 'codium -w' **
+aen create        Creates a new note with an editor using the first line of the created note as title
+                  By default the command calls 'codium -w' **
   -d, --db        - Path to DB *
+  -S, --shred     - Overwrites temporary file with random data
+
+aen edit          Edits a note given by slug or id
+                  By default the command calls 'codium -w' **
+  -d, --db        - Path to DB *
+  -k, --key       - Path to age keyfile *
+  -s, --slug      - Slug of note to get
+  -i, --id        - ID of note to get
+  -S, --shred     - Overwrites temporary file with random data
 
 aen write         Writes a new note
   -d, --db        - Path to DB *
@@ -47,6 +57,8 @@ AENKEY=""
 AENEDITOR="codium -w"
 ```
 
+Be aware that the first line of the note created with `aen create` will be used as a title. Every character matching `[^a-zA-Z0-9 !\"§$%&/()=]+` will be removed from that.
+
 ## Example
 The following example snippet shows the initialization of the database as well as adding, viewing and deleting a note.
 
@@ -56,8 +68,6 @@ The following example snippet shows the initialization of the database as well a
 ❯ aen init
 Written key to /tmp/aen_1.
 Public key: age1xphzytv7l6jta9a5cczes0agg5aq37ewrcpc54y5mehnjsqlw48qr0wyc7
-❯ aen write --title "Hello World --message "Hello from age1xphzytv7l6jta9a5cczes0agg5aq37ewrcpc54y5mehnjsqlw48qr0wyc7!"
-Error writing note: title and message must be given.
 ❯ aen write --title "Hello World\!" --message "Hello from age1xphzytv7l6jta9a5cczes0agg5aq37ewrcpc54y5mehnjsqlw48qr0wyc7\!"
 Successfully written note hello-world.
 ❯ aen list

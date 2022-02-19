@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -81,6 +82,36 @@ func NewNote(title string, text string) (note *Note) {
 	}
 }
 
+func (note *Note) Slug() (slug string) {
+	regex, err := regexp.Compile("[^a-zA-Z0-9 ]+")
+	if err != nil {
+		log.Fatalf("Error compiling regular expression: %v", err)
+	}
+
+	slug = regex.ReplaceAllString(note.Title, "")
+	slug = strings.ReplaceAll(slug, " ", "-")
+	slug = strings.ToLower(slug)
+	return slug
+}
+
+// Reads a file and parses it's content. The resulting Note does not have a UUID or a Time set.
+func NotefileToNote(path string) (note *Note, err error) {
+	if _, err = os.Stat(path); err != nil {
+		return nil, err
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	lines := strings.Split(string(content), "\n")
+	return &Note{
+		Title: lines[0],
+		Text:  strings.Join(lines[1:], "\n"),
+	}, nil
+}
+
 func (note *Note) Encrypt(x25519recipients ...age.X25519Recipient) (ciphertext string, err error) {
 	var recipients []age.Recipient
 	for r := range x25519recipients {
@@ -112,6 +143,12 @@ func (note *Note) ToEncryptedNote(x25519recipients ...age.X25519Recipient) (encr
 
 func (note *Note) Json() (encodedNote []byte, err error) {
 	return json.Marshal(note)
+}
+
+// Writes note to a file in the format of Title\nText.
+func (note *Note) ToFile(path string) (err error) {
+	content := strings.Join([]string{note.Title, note.Text}, "\n")
+	return os.WriteFile(path, []byte(content), 0600)
 }
 
 type EncryptedNote struct {
