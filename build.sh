@@ -17,3 +17,6 @@ export CGO_ENABLED=0
 GOOS=windows GOARCH=amd64 build_aen
 GOOS=linux GOARCH=amd64 build_aen
 GOOS=darwin GOARCH=amd64 build_aen
+GOOS=windows GOARCH=arm64 build_aen
+GOOS=linux GOARCH=arm64 build_aen
+GOOS=darwin GOARCH=arm64 build_aen
