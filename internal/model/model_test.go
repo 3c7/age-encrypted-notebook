@@ -69,35 +69,6 @@ func TestNoteEncryptionAndDecryption(t *testing.T) {
 	}
 }
 
-func TestConfigIdentity(t *testing.T) {
-	conf := model.Config{
-		Publickey:  pub,
-		Privatekey: key,
-	}
-	ageIdentity, err := age.ParseX25519Identity(key)
-	if err != nil {
-		t.Errorf("Error parsing private key identity: %v", err)
-	}
-	confIdentity, err := conf.Identity()
-	if err != nil {
-		t.Errorf("Error parsing private key identity from config: %v", err)
-	}
-	if confIdentity.String() != ageIdentity.String() {
-		t.Errorf("Identities based on the same key do not match: %s <> %s", confIdentity.String(), ageIdentity.String())
-	}
-}
-
-func TestConfigFromPrivateKey(t *testing.T) {
-	config := model.NewConfigFromPrivateKey(key)
-
-	if config.Privatekey != key {
-		t.Errorf("Private key mismatch: %s <> %s (current <> exp)", config.Privatekey, key)
-	}
-	if config.Publickey != pub {
-		t.Errorf("Public key mismatch: %s <> %s (current <> exp)", config.Publickey, pub)
-	}
-}
-
 func TestSlugCreation(t *testing.T) {
 	title := "!\"§$%&/()=?Hello World!"
 	expected := "hello-world"
