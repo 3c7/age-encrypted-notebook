@@ -2,6 +2,7 @@ package utils
 
 import (
 	"crypto/rand"
+	"errors"
 	"os"
 	"regexp"
 
@@ -37,4 +38,26 @@ func OverwriteFileContent(path string) (err error) {
 		return err
 	}
 	return os.WriteFile(path, b, 0600)
+}
+
+// Checks for paths given as parameters and envs. Returns the correct path prioritizing parameters over envs.
+func GetPaths(pathFlag, pathEnv, keyFlag, keyEnv string, keyNeeded bool) (path, key string, err error) {
+	if len(pathFlag) > 0 {
+		path = pathFlag
+	} else if len(pathEnv) > 0 {
+		path = pathEnv
+	} else {
+		return "", "", errors.New("path to database must be given")
+	}
+
+	if len(keyFlag) > 0 {
+		key = keyFlag
+	} else if len(keyEnv) > 0 {
+		key = keyEnv
+	} else {
+		if keyNeeded {
+			return "", "", errors.New("path to keyfile must be given")
+		}
+	}
+	return path, key, nil
 }

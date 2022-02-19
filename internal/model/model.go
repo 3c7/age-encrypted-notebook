@@ -16,37 +16,6 @@ import (
 	uuid "github.com/google/uuid"
 )
 
-type Config struct {
-	Publickey  string
-	Privatekey string
-}
-
-func NewConfigFromPrivateKey(privatekey string) *Config {
-	identity, err := age.ParseX25519Identity(privatekey)
-	if err != nil {
-		log.Fatalf("Error parsing identity from private string: %v", err)
-	}
-	recipient := identity.Recipient()
-	return &Config{
-		Publickey:  recipient.String(),
-		Privatekey: privatekey,
-	}
-}
-
-func (c Config) Identity() (identity *age.X25519Identity, err error) {
-	if identity, err = age.ParseX25519Identity(c.Privatekey); err != nil {
-		log.Fatalf("Could not parse private key: %v", err)
-	}
-	return identity, nil
-}
-
-func (c Config) Recipient() (recipient *age.X25519Recipient, err error) {
-	if recipient, err = age.ParseX25519Recipient(c.Publickey); err != nil {
-		log.Fatalf("Could not parse public key: %v", err)
-	}
-	return recipient, err
-}
-
 type Recipient struct {
 	Alias     string
 	Publickey string
@@ -64,6 +33,10 @@ func NewRecipientFromIdentity(alias string, identity age.X25519Identity) (recipi
 		Alias:     alias,
 		Publickey: identity.Recipient().String(),
 	}
+}
+
+func (r *Recipient) Json() (j []byte, err error) {
+	return json.Marshal(r)
 }
 
 type Note struct {

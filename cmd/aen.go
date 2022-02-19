@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"hash/crc32"
 	"io/ioutil"
 	"log"
 	"os"
@@ -13,8 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"filippo.io/age"
-	"github.com/3c7/aen/internal/database"
+	"github.com/3c7/aen"
 	"github.com/3c7/aen/internal/model"
 	"github.com/3c7/aen/internal/utils"
 )
@@ -28,19 +28,19 @@ const usage string = `Age Encrypted Notebook $(VERSION)
 
 Usage:
 
-aen init          Initializes the private key and the database if not already given and adds the own public key to the database
+aen init (in)     Initializes the private key and the database if not already given and adds the own public key to the database
   -o, --output    - Path to DB *
   -k, --key       - Path to age keyfile *
 
-aen list          Lists the slugs of available notes sorted by their timestamp
+aen list (ls)     Lists the slugs of available notes sorted by their timestamp
   -d, --db        - Path to DB *
 
-aen create        Creates a new note with an editor using the first line of the created note as title
+aen create (cr)   Creates a new note with an editor using the first line of the created note as title
                   By default the command calls 'codium -w' **
   -d, --db        - Path to DB *
   -S, --shred     - Overwrites temporary file with random data
 
-aen edit          Edits a note given by slug or id
+aen edit (ed)     Edits a note given by slug or id
                   By default the command calls 'codium -w' **
   -d, --db        - Path to DB *
   -k, --key       - Path to age keyfile *
@@ -48,18 +48,20 @@ aen edit          Edits a note given by slug or id
   -i, --id        - ID of note to get
   -S, --shred     - Overwrites temporary file with random data
 
-aen write         Writes a new note
+aen write (wr)    Writes a new note
   -d, --db        - Path to DB *
   -t, --title     - Title of the note
   -m, --message   - Message of the note
 
-aen get           Get and decrypt a note by its slug or id
+aen get (g)       Get and decrypt a note by its slug or id
   -d, --db        - Path to DB *
   -k, --key       - Path to age keyfile *
   -s, --slug      - Slug of note to get
   -i, --id        - ID of note to get
 
-aen del           Delete note by its slug or id
+aen remove (rm)   Removes note by its slug or id from the database
+                  NOTE: While the note is not retrievable through aen anymore,
+				  the data reside in the database file until its overwritten by a new note.
   -d, --db        - Path to DB *
   -s, --slug      - Slug of note to get
   -i, --id        - ID of note to get
@@ -87,11 +89,11 @@ func main() {
 	}
 
 	var (
-		pathFlag, keyFlag, titleFlag, messageFlag, slugFlag string
-		pathEnv, keyEnv, editorEnv                          string
-		editorCmd                                           []string
-		idFlag                                              uint
-		shredFlag                                           bool
+		pathFlag, keyFlag, titleFlag, messageFlag, slugFlag, aliasFlag string
+		pathEnv, keyEnv, editorEnv                                     string
+		editorCmd                                                      []string
+		idFlag                                                         uint
+		shredFlag                                                      bool
 	)
 
 	InitCmd := flag.NewFlagSet("init", flag.ExitOnError)
@@ -99,6 +101,8 @@ func main() {
 	InitCmd.StringVar(&pathFlag, "o", "", "Filepath to database file which will be created, if not already available.")
 	InitCmd.StringVar(&keyFlag, "key", "", "Filepath to key file, will be created if not available.")
 	InitCmd.StringVar(&keyFlag, "k", "", "Filepath to key file, will be created if not available.")
+	InitCmd.StringVar(&aliasFlag, "alias", "", "Alias to be used for the public key.")
+	InitCmd.StringVar(&aliasFlag, "a", "", "Alias to be used for the public key.")
 
 	ListCmd := flag.NewFlagSet("list", flag.ExitOnError)
 	ListCmd.StringVar(&pathFlag, "db", "", "Path to database")
@@ -128,15 +132,15 @@ func main() {
 	CreateCmd.BoolVar(&shredFlag, "shred", false, "Shred file contents afterwards")
 	CreateCmd.BoolVar(&shredFlag, "S", false, "Shred file contents afterwards")
 
-	DelCmd := flag.NewFlagSet("del", flag.ExitOnError)
-	DelCmd.StringVar(&pathFlag, "db", "", "Path to database")
-	DelCmd.StringVar(&pathFlag, "d", "", "Path to database")
-	DelCmd.StringVar(&keyFlag, "key", "", "Path to keyfile")
-	DelCmd.StringVar(&keyFlag, "k", "", "Path to keyfile")
-	DelCmd.StringVar(&slugFlag, "slug", "", "Slug for note")
-	DelCmd.StringVar(&slugFlag, "s", "", "Slug for note")
-	DelCmd.UintVar(&idFlag, "id", 0, "ID for note")
-	DelCmd.UintVar(&idFlag, "i", 0, "ID for note")
+	RmCmd := flag.NewFlagSet("remove", flag.ExitOnError)
+	RmCmd.StringVar(&pathFlag, "db", "", "Path to database")
+	RmCmd.StringVar(&pathFlag, "d", "", "Path to database")
+	RmCmd.StringVar(&keyFlag, "key", "", "Path to keyfile")
+	RmCmd.StringVar(&keyFlag, "k", "", "Path to keyfile")
+	RmCmd.StringVar(&slugFlag, "slug", "", "Slug for note")
+	RmCmd.StringVar(&slugFlag, "s", "", "Slug for note")
+	RmCmd.UintVar(&idFlag, "id", 0, "ID for note")
+	RmCmd.UintVar(&idFlag, "i", 0, "ID for note")
 
 	EditCmd := flag.NewFlagSet("edit", flag.ExitOnError)
 	EditCmd.StringVar(&pathFlag, "db", "", "Path to database")
@@ -150,6 +154,10 @@ func main() {
 	EditCmd.BoolVar(&shredFlag, "shred", false, "Shred file contents afterwards")
 	EditCmd.BoolVar(&shredFlag, "S", false, "Shred file contents afterwards")
 
+	RecipientsCmd := flag.NewFlagSet("recipients", flag.ExitOnError)
+	RecipientsCmd.StringVar(&pathFlag, "db", "", "Path to database")
+	RecipientsCmd.StringVar(&pathFlag, "d", "", "Path to database")
+
 	pathEnv = os.Getenv("AENDB")
 	keyEnv = os.Getenv("AENKEY")
 	editorEnv = os.Getenv("AENEDITOR")
@@ -161,28 +169,28 @@ func main() {
 	}
 
 	switch os.Args[1] {
-	case "init":
+	case "init", "in":
 		InitCmd.Parse(os.Args[2:])
-		path, key, err := getPaths(pathFlag, pathEnv, keyFlag, keyEnv, true)
+		path, key, err := utils.GetPaths(pathFlag, pathEnv, keyFlag, keyEnv, true)
 		if err != nil {
 			log.Fatalf("Error initializing database: %v", err)
 		}
-		err = initAen(path, key)
+		err = initAen(path, key, aliasFlag)
 		if err != nil {
 			log.Fatalf("Error initializing aen: %v", err)
 		}
 
-	case "list":
+	case "list", "ls":
 		ListCmd.Parse(os.Args[2:])
-		path, _, err := getPaths(pathFlag, pathEnv, "", "", false)
+		path, _, err := utils.GetPaths(pathFlag, pathEnv, "", "", false)
 		if err != nil {
 			log.Fatalf("Error listing notes: %v", err)
 		}
 		listNotes(path)
 
-	case "write":
+	case "write", "wr":
 		WriteCmd.Parse(os.Args[2:])
-		path, _, err := getPaths(pathFlag, pathEnv, "", "", false)
+		path, _, err := utils.GetPaths(pathFlag, pathEnv, "", "", false)
 		if err != nil {
 			log.Fatalf("Error writing note: %v", err)
 		}
@@ -191,9 +199,9 @@ func main() {
 		}
 		writeNote(path, titleFlag, messageFlag)
 
-	case "get":
+	case "get", "g":
 		GetCmd.Parse(os.Args[2:])
-		path, key, err := getPaths(pathFlag, pathEnv, keyFlag, keyEnv, true)
+		path, key, err := utils.GetPaths(pathFlag, pathEnv, keyFlag, keyEnv, true)
 		if err != nil {
 			log.Fatalf("Error getting note: %v", err)
 		}
@@ -202,32 +210,40 @@ func main() {
 		}
 		getNote(path, key, slugFlag, idFlag)
 
-	case "create":
+	case "create", "cr":
 		CreateCmd.Parse(os.Args[2:])
-		path, _, err := getPaths(pathFlag, pathEnv, "", "", false)
+		path, _, err := utils.GetPaths(pathFlag, pathEnv, "", "", false)
 		if err != nil {
 			log.Fatalf("Error creating note: %v", err)
 		}
 		createNote(path, editorCmd, shredFlag)
 
-	case "edit":
+	case "edit", "ed":
 		EditCmd.Parse(os.Args[2:])
-		path, key, err := getPaths(pathFlag, pathEnv, keyFlag, keyEnv, true)
+		path, key, err := utils.GetPaths(pathFlag, pathEnv, keyFlag, keyEnv, true)
 		if err != nil {
 			log.Fatalf("Error editing note: %v", err)
 		}
 		editNote(path, key, slugFlag, int(idFlag), editorCmd, shredFlag)
 
-	case "del":
-		DelCmd.Parse(os.Args[2:])
-		path, _, err := getPaths(pathFlag, pathEnv, "", "", false)
+	case "remove", "del", "rm":
+		RmCmd.Parse(os.Args[2:])
+		path, _, err := utils.GetPaths(pathFlag, pathEnv, "", "", false)
 		if err != nil {
 			log.Fatalf("Error deleting note: %v", err)
 		}
 		deleteNote(path, slugFlag, idFlag)
 
-	case "version", "ver":
+	case "version", "ver", "v":
 		log.Printf("Age Encrypted Notebook version: %s", Version)
+
+	case "recipients", "re":
+		RecipientsCmd.Parse(os.Args[2:])
+		path, _, err := utils.GetPaths(pathFlag, pathEnv, "", "", false)
+		if err != nil {
+			log.Fatalf("Error listing recipients: %v", err)
+		}
+		listRecipients(path)
 
 	default:
 		flag.Usage()
@@ -235,99 +251,43 @@ func main() {
 	}
 }
 
-// Initializes AEN with a database and a key. If database is already available, a key will be generated.
+// Initializes AEN with a database and a key.
+// If database is already available, a key will be generated.
 // If both are available, the public key will be added as recipient.
-func initAen(path string, keyPath string) (err error) {
-	key, err := ensureKey(keyPath)
+func initAen(path string, keyPath string, aliasFlag string) (err error) {
+	key, err := aen.EnsureKey(keyPath)
 	if err != nil {
 		return err
 	}
 	log.Printf("Public key: %s\n", key.Recipient().String())
 
-	db, err := ensureDatabase(path)
+	db, err := aen.OpenDatabase(path, true)
 	if err != nil {
 		return err
 	}
+	defer db.Close()
 
-	err = db.Open()
-	if err != nil {
-		return err
+	if len(aliasFlag) == 0 {
+		aliasFlag = fmt.Sprintf("%x", crc32.ChecksumIEEE([]byte(key.Recipient().String())))
 	}
 
-	err = db.AddRecipient(key.Recipient())
+	recipient := model.Recipient{
+		Alias:     aliasFlag,
+		Publickey: key.Recipient().String(),
+	}
+
+	err = db.AddRecipient(recipient)
 	return
 }
 
-// Checks for paths given as parameters and envs. Returns the correct path prioritizing parameters over envs.
-func getPaths(pathFlag, pathEnv, keyFlag, keyEnv string, keyNeeded bool) (path, key string, err error) {
-	if len(pathFlag) > 0 {
-		path = pathFlag
-	} else if len(pathEnv) > 0 {
-		path = pathEnv
-	} else {
-		return "", "", errors.New("path to database must be given")
-	}
-
-	if len(keyFlag) > 0 {
-		key = keyFlag
-	} else if len(keyEnv) > 0 {
-		key = keyEnv
-	} else {
-		if keyNeeded {
-			return "", "", errors.New("path to keyfile must be given")
-		}
-	}
-	return path, key, nil
-}
-
-// Checks if a keyfile is available and tries to parse it. If no file is available, generate a new key.
-func ensureKey(keyPath string) (key *age.X25519Identity, err error) {
-	if _, err := os.Stat(keyPath); err == nil {
-		buf, err := os.ReadFile(keyPath)
-		if err != nil {
-			return nil, err
-		}
-		content := string(buf)
-		if strings.Contains(content, "\n") {
-			content = strings.ReplaceAll(content, "\n", "")
-		}
-		key, err = age.ParseX25519Identity(content)
-		return key, err
-	} else if errors.Is(err, os.ErrNotExist) {
-		key, err = age.GenerateX25519Identity()
-		if err != nil {
-			return nil, err
-		}
-		err = os.WriteFile(keyPath, []byte(fmt.Sprintf("%s\n", key.String())), 0600|os.ModeExclusive)
-		if err != nil {
-			return nil, err
-		}
-		log.Printf("Written key to %s.", keyPath)
-		return key, err
-	} else {
-		return nil, err
-	}
-}
-
-// Creates new database if not available, but returns error if access is denied.
-func ensureDatabase(path string) (db *database.Database, err error) {
-	if _, err := os.Stat(path); err == nil || errors.Is(err, os.ErrNotExist) {
-		return database.NewDatabaseInstance(path), nil
-	} else {
-		return nil, err
-	}
-}
-
-// List all notes available in the database.
+// List all notes available in the database and print them ordered by the creation time.
 func listNotes(pathFlag string) {
-	if _, err := os.Stat(pathFlag); errors.Is(err, os.ErrNotExist) {
-		log.Fatalf("Database %s not available.\n", pathFlag)
-	}
-	db := database.NewDatabaseInstance(pathFlag)
-	err := db.Open()
+	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
-		log.Fatalf("Error opening DB: %v", err)
+		log.Fatalf("Error opening database file: %v", err)
 	}
+	defer db.Close()
+
 	notes, err := db.GetEncryptedNotes()
 	if err != nil {
 		log.Fatalf("Error reading notes: %v", err)
@@ -349,8 +309,19 @@ func listNotes(pathFlag string) {
 	}
 }
 
-// Creates a new note through calling 'codium -w'
+// Creates a new note through
+// - creating a temporary file
+// - opening the file with the configured editor
+// - wait until the process exits
+// - read the file
+// - use the first line as title and the remaining content as note text
 func createNote(pathFlag string, cmdString []string, shredFlag bool) {
+	db, err := aen.OpenDatabase(pathFlag, false)
+	if err != nil {
+		log.Fatalf("Error opening database file: %v", err)
+	}
+	db.Close()
+
 	tmpfile, err := ioutil.TempFile("", "note")
 	if err != nil {
 		log.Fatalf("Error creating temporary file: %v", err)
@@ -384,13 +355,16 @@ func createNote(pathFlag string, cmdString []string, shredFlag bool) {
 	writeNote(pathFlag, title, message)
 }
 
+// Sililar to createNote this function decrypts and writes a note to a temporary file
+// which then can be edited through the configured editor.
 func editNote(pathFlag, keyFlag, slugFlag string, idFlag int, editorCmd []string, shredFlag bool) {
 	var note *model.EncryptedNote
-	db := database.NewDatabaseInstance(pathFlag)
-	err := db.Open()
+	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
-		log.Fatalf("Error opening DB: %v", err)
+		log.Fatalf("Error opening database: %v", err)
 	}
+	defer db.Close()
+
 	if len(slugFlag) > 0 {
 		note, err = db.GetEncryptedNoteBySlug(slugFlag)
 		if err != nil {
@@ -446,7 +420,7 @@ func editNote(pathFlag, keyFlag, slugFlag string, idFlag int, editorCmd []string
 			log.Fatalf("Could not delete old note by slug %s: %v", note.Slug(), err)
 		}
 	}
-	recipients, err := db.GetReceipients()
+	recipients, err := db.GetAgeRecipients()
 	if err != nil {
 		log.Fatalf("Could not get recipients: %v", err)
 	}
@@ -464,15 +438,16 @@ func editNote(pathFlag, keyFlag, slugFlag string, idFlag int, editorCmd []string
 	}
 }
 
-// Writes a new note
+// Writes a new note based on the parameters given.
 func writeNote(pathFlag, titleFlag, messageFlag string) {
-	db := database.NewDatabaseInstance(pathFlag)
-	err := db.Open()
+	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
-		log.Fatalf("Error opening DB: %v", err)
+		log.Fatalf("Error opening database: %v", err)
 	}
+	defer db.Close()
+
 	note := model.NewNote(titleFlag, messageFlag)
-	x25519Recipients, err := db.GetReceipients()
+	x25519Recipients, err := db.GetAgeRecipients()
 	if err != nil {
 		log.Fatalf("Error loading recipients: %v", err)
 	}
@@ -490,11 +465,11 @@ func writeNote(pathFlag, titleFlag, messageFlag string) {
 
 func getNote(pathFlag, keyFlag, slugFlag string, idFlag uint) {
 	var encryptedNote *model.EncryptedNote
-	db := database.NewDatabaseInstance(pathFlag)
-	err := db.Open()
+	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
-		log.Fatalf("Error opening DB: %v", err)
+		log.Fatalf("Error opening database: %v", err)
 	}
+	defer db.Close()
 
 	identity, err := utils.IdentityFromKeyfile(keyFlag)
 	if err != nil {
@@ -530,11 +505,11 @@ func deleteNote(pathFlag, slugFlag string, idFlag uint) {
 		log.Fatal("Error deleting note: either slug or id must be given.")
 	}
 
-	db := database.NewDatabaseInstance(pathFlag)
-	err = db.Open()
+	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
-		log.Fatalf("Error opening DB: %v", err)
+		log.Fatalf("Error opening database: %v", err)
 	}
+	defer db.Close()
 
 	if len(slugFlag) > 0 {
 		err = db.DeleteNoteBySlug(slugFlag)
@@ -549,5 +524,27 @@ func deleteNote(pathFlag, slugFlag string, idFlag uint) {
 	}
 	if err != nil {
 		log.Fatalf("Could not delete note: %v", err)
+	}
+}
+
+func listRecipients(pathFlag string) {
+	db, err := aen.OpenDatabase(pathFlag, false)
+	if err != nil {
+		log.Fatalf("Error opening database: %v", err)
+	}
+	defer db.Close()
+
+	recipients, err := db.GetRecipients()
+	if err != nil {
+		log.Fatalf("Error loading recipients: %v", err)
+	}
+	if len(recipients) == 0 {
+		// Should not really be the case, but anyway...
+		log.Println("Recipient list is empty.")
+	} else {
+		log.Printf("| %-20s | %-62s |", "Alias", "Public Key")
+		for _, r := range recipients {
+			log.Printf("| %-20s | %-62s |", r.Alias, r.Publickey)
+		}
 	}
 }
