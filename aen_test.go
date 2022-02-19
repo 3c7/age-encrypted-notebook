@@ -42,13 +42,9 @@ func TestOpenDatabaseEnsured(t *testing.T) {
 
 	db, err := aen.OpenDatabase(tmpfile, true)
 	if err != nil {
-		t.Errorf("Error creating database: %v", err)
+		t.Errorf("Error opening database: %v", err)
 	}
-
-	err = db.Open()
-	if err != nil {
-		t.Errorf("Error accessing database: %v", err)
-	}
+	db.Close()
 	os.Remove(tmpfile)
 }
 
@@ -57,8 +53,16 @@ func TestOpenDatabase(t *testing.T) {
 	if err != nil {
 		t.Errorf("Could not create temporary file: %v", err)
 	}
-	_, err = bbolt.Open(tmpfile, 0600, nil)
+	db, err := bbolt.Open(tmpfile, 0600, nil)
 	if err != nil {
 		t.Errorf("Could not create database instance: %v", err)
 	}
+	db.Close()
+
+	db2, err := aen.OpenDatabase(tmpfile, false)
+	if err != nil {
+		t.Fatalf("Could not open database file created by bolt.")
+	}
+	db2.Close()
+	os.Remove(tmpfile)
 }
