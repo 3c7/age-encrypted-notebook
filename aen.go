@@ -14,18 +14,21 @@ import (
 // OpenDatabase returns an instanciated Database struct.
 // If the database file is not available, a custom error will be returned.
 // However, if the parameter ensure is given, the database will be created.
+// Calling this function should be followed with a "defer db.Close()"
 func OpenDatabase(path string, ensure bool) (db *database.Database, err error) {
 	_, err = os.Stat(path)
 	if err == nil {
-		return database.NewDatabaseInstance(path), nil
+		db = database.NewDatabaseInstance(path)
 	} else if errors.Is(err, os.ErrNotExist) && ensure {
-		return database.NewDatabaseInstance(path), nil
+		db = database.NewDatabaseInstance(path)
 	} else {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("database file %s not available", path)
 		}
 		return nil, err
 	}
+	err = db.Open()
+	return db, err
 }
 
 // EnsureKey returns a pointer to an age.X25519Identity struct.

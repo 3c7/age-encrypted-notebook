@@ -155,55 +155,64 @@ func (db *Database) GetEncryptedNoteByIndex(idx int) (encryptedNote *model.Encry
 	return &notes[idx-1], nil
 }
 
-func (db *Database) GetReceipients() (recipients []age.X25519Recipient, err error) {
+// Receives recipients as model.Recipient from database
+func (db *Database) GetRecipients() (recipients []model.Recipient, err error) {
+	if !db.isOpen {
+		return nil, errors.New("database is not open")
+	}
 	// Using read/write access because the Bucket might not exist yet
 	err = db.Handle.Update(func(tx *bolt.Tx) error {
-		var publicKeys []string
 		buf, err := db.readFromBucket(tx, []byte("config"), []byte("recipients"))
 		if err != nil {
 			return err
 		}
 		if len(string(buf)) > 0 {
-			err = json.Unmarshal(buf, &publicKeys)
-			if err != nil {
-				return err
-			}
-			for _, key := range publicKeys {
-				recipient, err := age.ParseX25519Recipient(key)
-				if err != nil {
-					return err
-				}
-				recipients = append(recipients, *recipient)
-			}
-			return nil
+			err = json.Unmarshal(buf, &recipients)
 		}
-		return nil
+		return err
 	})
+	return recipients, err
+}
+
+// Calls GetRecipients and converts the results to []age.X25519Recipient
+func (db *Database) GetAgeRecipients() (ageRecipients []age.X25519Recipient, err error) {
+	recipients, err := db.GetRecipients()
 	if err != nil {
 		return nil, err
 	}
-	return recipients, nil
+	for _, recipient := range recipients {
+		r, err := age.ParseX25519Recipient(recipient.Publickey)
+		if err != nil {
+			return nil, err
+		}
+		ageRecipients = append(ageRecipients, *r)
+	}
+	return ageRecipients, nil
 }
 
-func (db *Database) AddRecipient(r *age.X25519Recipient) (err error) {
-	var (
-		recipients []age.X25519Recipient
-		publicKeys []string
-	)
-	recipients, err = db.GetReceipients()
+// Adds a recipient via model.Recipient struct. If the alias matches an already given recipient,
+// the public key will be overwritten.
+func (db *Database) AddRecipient(r model.Recipient) (err error) {
+	recipients, err := db.GetRecipients()
 	if err != nil {
 		return err
 	}
 
-	for _, recipient := range recipients {
-		if (*r).String() == recipient.String() {
+	changed := false
+	for idx, recipient := range recipients {
+		if r.Publickey == recipient.Publickey {
 			return nil
+		} else if r.Alias == recipient.Alias {
+			recipients[idx].Publickey = r.Publickey
+			changed = true
 		}
-		publicKeys = append(publicKeys, recipient.String())
 	}
-	publicKeys = append(publicKeys, r.String())
 
-	buf, err := json.Marshal(publicKeys)
+	if !changed {
+		recipients = append(recipients, r)
+	}
+
+	buf, err := json.Marshal(recipients)
 	if err != nil {
 		return err
 	}

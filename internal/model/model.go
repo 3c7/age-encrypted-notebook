@@ -35,6 +35,10 @@ func NewRecipientFromIdentity(alias string, identity age.X25519Identity) (recipi
 	}
 }
 
+func (r *Recipient) Json() (j []byte, err error) {
+	return json.Marshal(r)
+}
+
 type Note struct {
 	Uuid  uuid.UUID
 	Time  time.Time

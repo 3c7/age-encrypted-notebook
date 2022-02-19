@@ -100,13 +100,22 @@ func TestMultipleRecipients(t *testing.T) {
 	t.Logf("Got recipient %s", i1.Recipient().String())
 	t.Logf("Got recipient %s", i2.Recipient().String())
 
-	_ = DB.AddRecipient(i1.Recipient())
-	err = DB.AddRecipient(i2.Recipient())
+	r1 := model.Recipient{
+		Alias:     "Test1",
+		Publickey: i1.Recipient().String(),
+	}
+	r2 := model.Recipient{
+		Alias:     "Test2",
+		Publickey: i2.Recipient().String(),
+	}
+
+	_ = DB.AddRecipient(r1)
+	err = DB.AddRecipient(r2)
 	if err != nil {
 		t.Errorf("Error during recipient addition: %v", err)
 	}
 
-	r, err := DB.GetReceipients()
+	r, err := DB.GetRecipients()
 	if err != nil {
 		t.Errorf("Error loading recipients: %v", err)
 	}
@@ -114,13 +123,13 @@ func TestMultipleRecipients(t *testing.T) {
 		t.Errorf("Length should be 2 but was %d.", len(r))
 	}
 	for _, r3 := range r {
-		t.Logf("Loaded recipient %s", r3.String())
-		if r3.String() != i1.Recipient().String() && r3.String() != i2.Recipient().String() {
+		t.Logf("Loaded recipient %s", r3.Publickey)
+		if r3.Publickey != i1.Recipient().String() && r3.Publickey != i2.Recipient().String() {
 			t.Errorf(
 				"r3 should be either %s or %s but was %s.",
 				i1.Recipient().String(),
 				i2.Recipient().String(),
-				r3.String(),
+				r3.Publickey,
 			)
 		}
 	}

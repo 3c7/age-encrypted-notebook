@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"hash/crc32"
 	"io/ioutil"
 	"log"
 	"os"
@@ -88,11 +89,11 @@ func main() {
 	}
 
 	var (
-		pathFlag, keyFlag, titleFlag, messageFlag, slugFlag string
-		pathEnv, keyEnv, editorEnv                          string
-		editorCmd                                           []string
-		idFlag                                              uint
-		shredFlag                                           bool
+		pathFlag, keyFlag, titleFlag, messageFlag, slugFlag, aliasFlag string
+		pathEnv, keyEnv, editorEnv                                     string
+		editorCmd                                                      []string
+		idFlag                                                         uint
+		shredFlag                                                      bool
 	)
 
 	InitCmd := flag.NewFlagSet("init", flag.ExitOnError)
@@ -100,6 +101,8 @@ func main() {
 	InitCmd.StringVar(&pathFlag, "o", "", "Filepath to database file which will be created, if not already available.")
 	InitCmd.StringVar(&keyFlag, "key", "", "Filepath to key file, will be created if not available.")
 	InitCmd.StringVar(&keyFlag, "k", "", "Filepath to key file, will be created if not available.")
+	InitCmd.StringVar(&aliasFlag, "alias", "", "Alias to be used for the public key.")
+	InitCmd.StringVar(&aliasFlag, "a", "", "Alias to be used for the public key.")
 
 	ListCmd := flag.NewFlagSet("list", flag.ExitOnError)
 	ListCmd.StringVar(&pathFlag, "db", "", "Path to database")
@@ -151,6 +154,10 @@ func main() {
 	EditCmd.BoolVar(&shredFlag, "shred", false, "Shred file contents afterwards")
 	EditCmd.BoolVar(&shredFlag, "S", false, "Shred file contents afterwards")
 
+	RecipientsCmd := flag.NewFlagSet("recipients", flag.ExitOnError)
+	RecipientsCmd.StringVar(&pathFlag, "db", "", "Path to database")
+	RecipientsCmd.StringVar(&pathFlag, "d", "", "Path to database")
+
 	pathEnv = os.Getenv("AENDB")
 	keyEnv = os.Getenv("AENKEY")
 	editorEnv = os.Getenv("AENEDITOR")
@@ -168,7 +175,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error initializing database: %v", err)
 		}
-		err = initAen(path, key)
+		err = initAen(path, key, aliasFlag)
 		if err != nil {
 			log.Fatalf("Error initializing aen: %v", err)
 		}
@@ -230,6 +237,14 @@ func main() {
 	case "version", "ver", "v":
 		log.Printf("Age Encrypted Notebook version: %s", Version)
 
+	case "recipients", "re":
+		RecipientsCmd.Parse(os.Args[2:])
+		path, _, err := utils.GetPaths(pathFlag, pathEnv, "", "", false)
+		if err != nil {
+			log.Fatalf("Error listing recipients: %v", err)
+		}
+		listRecipients(path)
+
 	default:
 		flag.Usage()
 		log.Fatalf("Subcommand unknown: %s", os.Args[1])
@@ -239,7 +254,7 @@ func main() {
 // Initializes AEN with a database and a key.
 // If database is already available, a key will be generated.
 // If both are available, the public key will be added as recipient.
-func initAen(path string, keyPath string) (err error) {
+func initAen(path string, keyPath string, aliasFlag string) (err error) {
 	key, err := aen.EnsureKey(keyPath)
 	if err != nil {
 		return err
@@ -250,13 +265,18 @@ func initAen(path string, keyPath string) (err error) {
 	if err != nil {
 		return err
 	}
+	defer db.Close()
 
-	err = db.Open()
-	if err != nil {
-		return err
+	if len(aliasFlag) == 0 {
+		aliasFlag = fmt.Sprintf("%x", crc32.ChecksumIEEE([]byte(key.Recipient().String())))
 	}
 
-	err = db.AddRecipient(key.Recipient())
+	recipient := model.Recipient{
+		Alias:     aliasFlag,
+		Publickey: key.Recipient().String(),
+	}
+
+	err = db.AddRecipient(recipient)
 	return
 }
 
@@ -266,10 +286,8 @@ func listNotes(pathFlag string) {
 	if err != nil {
 		log.Fatalf("Error opening database file: %v", err)
 	}
-	err = db.Open()
-	if err != nil {
-		log.Fatalf("Error opening DB: %v", err)
-	}
+	defer db.Close()
+
 	notes, err := db.GetEncryptedNotes()
 	if err != nil {
 		log.Fatalf("Error reading notes: %v", err)
@@ -298,10 +316,12 @@ func listNotes(pathFlag string) {
 // - read the file
 // - use the first line as title and the remaining content as note text
 func createNote(pathFlag string, cmdString []string, shredFlag bool) {
-	_, err := aen.OpenDatabase(pathFlag, false)
+	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
 		log.Fatalf("Error opening database file: %v", err)
 	}
+	db.Close()
+
 	tmpfile, err := ioutil.TempFile("", "note")
 	if err != nil {
 		log.Fatalf("Error creating temporary file: %v", err)
@@ -343,6 +363,8 @@ func editNote(pathFlag, keyFlag, slugFlag string, idFlag int, editorCmd []string
 	if err != nil {
 		log.Fatalf("Error opening database: %v", err)
 	}
+	defer db.Close()
+
 	if len(slugFlag) > 0 {
 		note, err = db.GetEncryptedNoteBySlug(slugFlag)
 		if err != nil {
@@ -398,7 +420,7 @@ func editNote(pathFlag, keyFlag, slugFlag string, idFlag int, editorCmd []string
 			log.Fatalf("Could not delete old note by slug %s: %v", note.Slug(), err)
 		}
 	}
-	recipients, err := db.GetReceipients()
+	recipients, err := db.GetAgeRecipients()
 	if err != nil {
 		log.Fatalf("Could not get recipients: %v", err)
 	}
@@ -422,8 +444,10 @@ func writeNote(pathFlag, titleFlag, messageFlag string) {
 	if err != nil {
 		log.Fatalf("Error opening database: %v", err)
 	}
+	defer db.Close()
+
 	note := model.NewNote(titleFlag, messageFlag)
-	x25519Recipients, err := db.GetReceipients()
+	x25519Recipients, err := db.GetAgeRecipients()
 	if err != nil {
 		log.Fatalf("Error loading recipients: %v", err)
 	}
@@ -445,6 +469,7 @@ func getNote(pathFlag, keyFlag, slugFlag string, idFlag uint) {
 	if err != nil {
 		log.Fatalf("Error opening database: %v", err)
 	}
+	defer db.Close()
 
 	identity, err := utils.IdentityFromKeyfile(keyFlag)
 	if err != nil {
@@ -484,6 +509,7 @@ func deleteNote(pathFlag, slugFlag string, idFlag uint) {
 	if err != nil {
 		log.Fatalf("Error opening database: %v", err)
 	}
+	defer db.Close()
 
 	if len(slugFlag) > 0 {
 		err = db.DeleteNoteBySlug(slugFlag)
@@ -498,5 +524,27 @@ func deleteNote(pathFlag, slugFlag string, idFlag uint) {
 	}
 	if err != nil {
 		log.Fatalf("Could not delete note: %v", err)
+	}
+}
+
+func listRecipients(pathFlag string) {
+	db, err := aen.OpenDatabase(pathFlag, false)
+	if err != nil {
+		log.Fatalf("Error opening database: %v", err)
+	}
+	defer db.Close()
+
+	recipients, err := db.GetRecipients()
+	if err != nil {
+		log.Fatalf("Error loading recipients: %v", err)
+	}
+	if len(recipients) == 0 {
+		// Should not really be the case, but anyway...
+		log.Println("Recipient list is empty.")
+	} else {
+		log.Printf("| %-20s | %-62s |", "Alias", "Public Key")
+		for _, r := range recipients {
+			log.Printf("| %-20s | %-62s |", r.Alias, r.Publickey)
+		}
 	}
 }
