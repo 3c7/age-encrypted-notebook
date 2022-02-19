@@ -298,6 +298,10 @@ func listNotes(pathFlag string) {
 // - read the file
 // - use the first line as title and the remaining content as note text
 func createNote(pathFlag string, cmdString []string, shredFlag bool) {
+	_, err := aen.OpenDatabase(pathFlag, false)
+	if err != nil {
+		log.Fatalf("Error opening database file: %v", err)
+	}
 	tmpfile, err := ioutil.TempFile("", "note")
 	if err != nil {
 		log.Fatalf("Error creating temporary file: %v", err)

@@ -2,6 +2,7 @@
 
 VERSION=$(git describe --tags --abbrev=0)
 build_aen() {
+    echo Building $GOOS $GOARCH...
     if [ $GOOS == "windows" ]; then
       go build -o "dist/aen.exe" -ldflags "-X main.Version=$VERSION" -trimpath ./cmd/aen.go
       cd dist && 7z a aen-$VERSION-$GOOS-$GOARCH.zip aen.exe && cd ..
@@ -14,9 +15,9 @@ build_aen() {
 }
 
 export CGO_ENABLED=0
-GOOS=windows GOARCH=amd64 build_aen
-GOOS=linux GOARCH=amd64 build_aen
-GOOS=darwin GOARCH=amd64 build_aen
-GOOS=windows GOARCH=arm64 build_aen
-GOOS=linux GOARCH=arm64 build_aen
-GOOS=darwin GOARCH=arm64 build_aen
+GOOS=windows GOARCH=amd64 build_aen > /dev/null
+GOOS=linux GOARCH=amd64 build_aen > /dev/null
+GOOS=darwin GOARCH=amd64 build_aen > /dev/null
+GOOS=windows GOARCH=arm64 build_aen > /dev/null
+GOOS=linux GOARCH=arm64 build_aen > /dev/null
+GOOS=darwin GOARCH=arm64 build_aen > /dev/null
