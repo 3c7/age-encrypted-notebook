@@ -12,41 +12,48 @@ Age Encrypted Notebook (devel)
 
 Usage:
 
-aen init          Initializes the private key and the database if not already given and adds the own public key to the database
-  -o, --output    - Path to DB *
-  -k, --key       - Path to age keyfile *
+aen init (in)          Initializes the private key and the database if not already given
+                       and adds the own public key to the database
+  -o, --output         - Path to DB *
+  -k, --key            - Path to age keyfile *
 
-aen list          Lists the slugs of available notes sorted by their timestamp
-  -d, --db        - Path to DB *
+aen list (ls)          Lists the slugs of available notes sorted by their timestamp
+  -d, --db             - Path to DB *
 
-aen create        Creates a new note with an editor using the first line of the created note as title
-                  By default the command calls 'codium -w' **
-  -d, --db        - Path to DB *
-  -S, --shred     - Overwrites temporary file with random data
+aen create (cr)        Creates a new note with an editor using the first line of the created
+                       note as title
+                       By default the command calls 'codium -w' **
+  -d, --db             - Path to DB *
+  -S, --shred          - Overwrites temporary file with random data
 
-aen edit          Edits a note given by slug or id
-                  By default the command calls 'codium -w' **
-  -d, --db        - Path to DB *
-  -k, --key       - Path to age keyfile *
-  -s, --slug      - Slug of note to get
-  -i, --id        - ID of note to get
-  -S, --shred     - Overwrites temporary file with random data
+aen edit (ed)          Edits a note given by slug or id
+                       By default the command calls 'codium -w' **
+  -d, --db             - Path to DB *
+  -k, --key            - Path to age keyfile *
+  -s, --slug           - Slug of note to get
+  -i, --id             - ID of note to get
+  -S, --shred          - Overwrites temporary file with random data
 
-aen write         Writes a new note
-  -d, --db        - Path to DB *
-  -t, --title     - Title of the note
-  -m, --message   - Message of the note
+aen write (wr)         Writes a new note
+  -d, --db             - Path to DB *
+  -t, --title          - Title of the note
+  -m, --message        - Message of the note
 
-aen get           Get and decrypt a note by its slug or id
-  -d, --db        - Path to DB *
-  -k, --key       - Path to age keyfile *
-  -s, --slug      - Slug of note to get
-  -i, --id        - ID of note to get
+aen get (g)            Get and decrypt a note by its slug or id
+  -d, --db             - Path to DB *
+  -k, --key            - Path to age keyfile *
+  -s, --slug           - Slug of note to get
+  -i, --id             - ID of note to get
 
-aen del           Delete note by its slug or id
-  -d, --db        - Path to DB *
-  -s, --slug      - Slug of note to get
-  -i, --id        - ID of note to get
+aen remove (rm)        Removes note by its slug or id from the database
+                       NOTE: While the note is not retrievable through aen anymore,
+                       the data reside in the database file until its overwritten by a new note.
+  -d, --db             - Path to DB *
+  -s, --slug           - Slug of note to get
+  -i, --id             - ID of note to get
+
+aen recipients (re)   Lists all recipients and their aliases
+  -d, --db            - Path to DB *
 ```
 First, if not already available, key and database must be generated using `aen init`. This generates a key as well as the database and adds the public key as recipient to the DB. Then other commands can be used to handle encrypted notes in the database. The database path as well as the key path and the editor command can also be set via environment variables:
 
