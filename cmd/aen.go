@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -231,8 +232,26 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error writing note: %v", err)
 		}
-		if len(titleFlag) == 0 || len(messageFlag) == 0 {
-			log.Fatal("Error writing note: title and message must be given.")
+
+		// Check if this program is used in a unix pipe and read from stdin, if this is the case
+		if utils.IsPipe() {
+			messageFlag = ""
+			log.Println("Using text from stdin as message.")
+			reader := bufio.NewReader(os.Stdin)
+			var err error = nil
+			var s string
+			for err == nil {
+				s, err = reader.ReadString('\n')
+				messageFlag = messageFlag + s + "\n"
+			}
+		}
+
+		if len(titleFlag) == 0 {
+			log.Fatal("Error writing note: title must be given.")
+		}
+
+		if len(messageFlag) == 0 {
+			log.Fatal("Error writing note: message must be given.")
 		}
 		writeNote(path, titleFlag, messageFlag)
 
