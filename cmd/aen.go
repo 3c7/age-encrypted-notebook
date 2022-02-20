@@ -574,6 +574,7 @@ func deleteNote(pathFlag, slugFlag string, idFlag uint) {
 		if err != nil {
 			log.Fatalf("Couldn't get note by index: %v", err)
 		}
+		slugFlag = note.Slug()
 		err = db.DeleteNoteBySlug(note.Slug())
 	} else {
 		err = errors.New("either of slug or id must be given")
@@ -581,6 +582,7 @@ func deleteNote(pathFlag, slugFlag string, idFlag uint) {
 	if err != nil {
 		log.Fatalf("Could not delete note: %v", err)
 	}
+	log.Printf("Deleted note %s.", slugFlag)
 }
 
 func listRecipients(pathFlag string) {
