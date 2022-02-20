@@ -23,6 +23,26 @@ var Version string
 
 const usage string = `Age Encrypted Notebook $(VERSION)
 
+Write age encrypted text snippets ("notes") into a Bolt database.
+
+Subcommands:
+  help        (?)   (-b|--brief)
+  init        (in)  (-o|--output) <DB path> (-k|--key) <key path>
+  list        (ls)  (-d|--db) <DB path>
+  create      (cr)  (-d|--db) <DB path> (-S|--shred)
+  edit        (ed)  (-d|--db) <DB path> (-k|--key) <key path>
+                    (-s|--slug) <slug> (-i|--id) <id> (-S|--shred)
+  write       (wr)  (-d|--db) <DB path> (-t|--title) <title> (-m|--message) <message>
+  get         (g)   (-d|--db) <DB path> (-k|--key) <key path>
+                    (-s|--slug) <slug> (-i|--id) <id>
+  remove      (rm)  (-d|--db) <DB path> (-s|--slug) <slug> (-i|--id) <id>
+  recipients  (re)  (-d|--db) <DB path>
+
+More details via "aen help" or with parameter "--help".
+`
+
+const help string = `Age Encrypted Notebook $(VERSION)
+
 * DB and keyfile paths can also be given via evironment variables AENDB and AENKEY.
 ** The default editor can be changed through setting the environment variable AENEDITOR.
 
@@ -81,6 +101,7 @@ func main() {
 
 	log.SetFlags(0)
 	flag.Usage = func() { fmt.Fprintf(os.Stderr, "%s\n", strings.Replace(usage, "$(VERSION)", Version, 1)) }
+	DetailedUsage := func() { fmt.Fprintf(os.Stderr, "%s\n", strings.Replace(help, "$(VERSION)", Version, 1)) }
 
 	if len(os.Args) == 1 {
 		flag.Usage()
@@ -89,7 +110,7 @@ func main() {
 
 	argString := strings.Join(os.Args, "")
 	if strings.Contains(argString, "--help") {
-		flag.Usage()
+		DetailedUsage()
 		os.Exit(1)
 	}
 
@@ -98,8 +119,12 @@ func main() {
 		pathEnv, keyEnv, editorEnv                                     string
 		editorCmd                                                      []string
 		idFlag                                                         uint
-		shredFlag                                                      bool
+		briefFlag, shredFlag                                           bool
 	)
+
+	HelpCmd := flag.NewFlagSet("help", flag.ExitOnError)
+	HelpCmd.BoolVar(&briefFlag, "brief", false, "Shows only brief usage information.")
+	HelpCmd.BoolVar(&briefFlag, "b", false, "Shows only brief usage information.")
 
 	InitCmd := flag.NewFlagSet("init", flag.ExitOnError)
 	InitCmd.StringVar(&pathFlag, "output", "", "Filepath to database file which will be created, if not already available.")
@@ -174,6 +199,13 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "help", "he", "?":
+		HelpCmd.Parse(os.Args[2:])
+		if briefFlag {
+			flag.Usage()
+		} else {
+			DetailedUsage()
+		}
 	case "init", "in":
 		InitCmd.Parse(os.Args[2:])
 		path, key, err := utils.GetPaths(pathFlag, pathEnv, keyFlag, keyEnv, true)
