@@ -35,7 +35,7 @@ Subcommands:
                     (-s|--slug) <slug> (-i|--id) <id> (-S|--shred)
   write       (wr)  (-d|--db) <DB path> (-t|--title) <title> (-m|--message) <message>
   get         (g)   (-d|--db) <DB path> (-k|--key) <key path>
-                    (-s|--slug) <slug> (-i|--id) <id>
+                    (-s|--slug) <slug> (-i|--id) <id> (-r|--raw)
   remove      (rm)  (-d|--db) <DB path> (-s|--slug) <slug> (-i|--id) <id>
   recipients  (re)  (-d|--db) <DB path>
 
@@ -81,6 +81,7 @@ aen get (g)            Get and decrypt a note by its slug or id
   -k, --key            - Path to age keyfile *
   -s, --slug           - Slug of note to get
   -i, --id             - ID of note to get
+  -r, --raw            - Only print note content without any metadata
 
 aen remove (rm)        Removes note by its slug or id from the database
                        NOTE: While the note is not retrievable through aen anymore,
@@ -120,7 +121,7 @@ func main() {
 		pathEnv, keyEnv, editorEnv                                     string
 		editorCmd                                                      []string
 		idFlag                                                         uint
-		briefFlag, shredFlag                                           bool
+		briefFlag, shredFlag, rawFlag                                  bool
 	)
 
 	HelpCmd := flag.NewFlagSet("help", flag.ExitOnError)
@@ -156,6 +157,8 @@ func main() {
 	GetCmd.StringVar(&slugFlag, "s", "", "Slug for note")
 	GetCmd.UintVar(&idFlag, "id", 0, "ID for note")
 	GetCmd.UintVar(&idFlag, "i", 0, "ID for note")
+	GetCmd.BoolVar(&rawFlag, "raw", false, "Only print note content")
+	GetCmd.BoolVar(&rawFlag, "r", false, "Only print note content")
 
 	CreateCmd := flag.NewFlagSet("create", flag.ExitOnError)
 	CreateCmd.StringVar(&pathFlag, "db", "", "Path to database")
@@ -207,6 +210,7 @@ func main() {
 		} else {
 			DetailedUsage()
 		}
+
 	case "init", "in":
 		InitCmd.Parse(os.Args[2:])
 		path, key, err := utils.GetPaths(pathFlag, pathEnv, keyFlag, keyEnv, true)
@@ -264,7 +268,7 @@ func main() {
 		if len(slugFlag) == 0 && idFlag == 0 {
 			log.Fatal("Error getting note: ID or Slug must be given.")
 		}
-		getNote(path, key, slugFlag, idFlag)
+		getNote(path, key, slugFlag, idFlag, rawFlag)
 
 	case "create", "cr":
 		CreateCmd.Parse(os.Args[2:])
@@ -315,7 +319,7 @@ func initAen(path string, keyPath string, aliasFlag string) (err error) {
 	if err != nil {
 		return err
 	}
-	log.Printf("Public key: %s\n", key.Recipient().String())
+	fmt.Printf("Public key: %s\n", key.Recipient().String())
 
 	db, err := aen.OpenDatabase(path, true)
 	if err != nil {
@@ -353,7 +357,7 @@ func listNotes(pathFlag string) {
 		return
 	}
 	model.SortNoteSlice(notes)
-	log.Printf("| %-5s | %-25s | %-25s | %-25s |\n", "ID", "Title", "Creation time", "Slug")
+	fmt.Printf("| %-5s | %-25s | %-25s | %-25s |\n", "ID", "Title", "Creation time", "Slug")
 	var title string
 	for idx, note := range notes {
 		if len(note.Title) > 25 {
@@ -361,7 +365,7 @@ func listNotes(pathFlag string) {
 		} else {
 			title = note.Title
 		}
-		log.Printf("| %-5s | %-25s | %-25s | %-25s |\n", fmt.Sprintf("%d", idx+1), title, note.Time.Format("2006-01-02 15:04:05"), note.Slug())
+		fmt.Printf("| %-5s | %-25s | %-25s | %-25s |\n", fmt.Sprintf("%d", idx+1), title, note.Time.Format("2006-01-02 15:04:05"), note.Slug())
 	}
 }
 
@@ -519,7 +523,7 @@ func writeNote(pathFlag, titleFlag, messageFlag string) {
 	log.Printf("Successfully written note %s.", encryptedNote.Slug())
 }
 
-func getNote(pathFlag, keyFlag, slugFlag string, idFlag uint) {
+func getNote(pathFlag, keyFlag, slugFlag string, idFlag uint, rawFlag bool) {
 	var encryptedNote *model.EncryptedNote
 	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
@@ -549,9 +553,13 @@ func getNote(pathFlag, keyFlag, slugFlag string, idFlag uint) {
 		log.Fatalf("Could not decrypt note: %v", err)
 	}
 
-	log.Printf("Title: %s (%s)\n", note.Title, note.Uuid.String())
-	log.Printf("Created: %s\n", note.Time.Format("2006-01-02 15:04:05"))
-	log.Printf("Content:\n%s\n", note.Text)
+	if rawFlag {
+		fmt.Printf("%s\n", note.Text)
+	} else {
+		fmt.Printf("Title: %s (%s)\n", note.Title, note.Uuid.String())
+		fmt.Printf("Created: %s\n", note.Time.Format("2006-01-02 15:04:05"))
+		fmt.Printf("Content:\n%s\n", note.Text)
+	}
 }
 
 func deleteNote(pathFlag, slugFlag string, idFlag uint) {
