@@ -44,6 +44,7 @@ aen get (g)            Get and decrypt a note by its slug or id
   -k, --key            - Path to age keyfile *
   -s, --slug           - Slug of note to get
   -i, --id             - ID of note to get
+  -r, --raw            - Only print note content without any metadata
 
 aen remove (rm)        Removes note by its slug or id from the database
                        NOTE: While the note is not retrievable through aen anymore,

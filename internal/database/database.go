@@ -134,6 +134,10 @@ func (db *Database) GetEncryptedNoteBySlug(slug string) (encryptedNote *model.En
 }
 
 func (db *Database) DeleteNoteBySlug(slug string) (err error) {
+	_, err = db.GetEncryptedNoteBySlug(slug)
+	if err != nil {
+		return errors.New("note with slug not available")
+	}
 	err = db.Handle.Update(func(tx *bolt.Tx) error {
 		err := db.deleteFromBucket(tx, []byte("notes"), []byte(slug))
 		return err

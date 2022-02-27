@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -22,6 +23,26 @@ import (
 var Version string
 
 const usage string = `Age Encrypted Notebook $(VERSION)
+
+Write age encrypted text snippets ("notes") into a Bolt database.
+
+Subcommands:
+  help        (?)   (-b|--brief)
+  init        (in)  (-o|--output) <DB path> (-k|--key) <key path>
+  list        (ls)  (-d|--db) <DB path>
+  create      (cr)  (-d|--db) <DB path> (-S|--shred)
+  edit        (ed)  (-d|--db) <DB path> (-k|--key) <key path>
+                    (-s|--slug) <slug> (-i|--id) <id> (-S|--shred)
+  write       (wr)  (-d|--db) <DB path> (-t|--title) <title> (-m|--message) <message>
+  get         (g)   (-d|--db) <DB path> (-k|--key) <key path>
+                    (-s|--slug) <slug> (-i|--id) <id> (-r|--raw)
+  remove      (rm)  (-d|--db) <DB path> (-s|--slug) <slug> (-i|--id) <id>
+  recipients  (re)  (-d|--db) <DB path>
+
+More details via "aen help" or with parameter "--help".
+`
+
+const help string = `Age Encrypted Notebook $(VERSION)
 
 * DB and keyfile paths can also be given via evironment variables AENDB and AENKEY.
 ** The default editor can be changed through setting the environment variable AENEDITOR.
@@ -60,6 +81,7 @@ aen get (g)            Get and decrypt a note by its slug or id
   -k, --key            - Path to age keyfile *
   -s, --slug           - Slug of note to get
   -i, --id             - ID of note to get
+  -r, --raw            - Only print note content without any metadata
 
 aen remove (rm)        Removes note by its slug or id from the database
                        NOTE: While the note is not retrievable through aen anymore,
@@ -81,6 +103,7 @@ func main() {
 
 	log.SetFlags(0)
 	flag.Usage = func() { fmt.Fprintf(os.Stderr, "%s\n", strings.Replace(usage, "$(VERSION)", Version, 1)) }
+	DetailedUsage := func() { fmt.Fprintf(os.Stderr, "%s\n", strings.Replace(help, "$(VERSION)", Version, 1)) }
 
 	if len(os.Args) == 1 {
 		flag.Usage()
@@ -89,7 +112,7 @@ func main() {
 
 	argString := strings.Join(os.Args, "")
 	if strings.Contains(argString, "--help") {
-		flag.Usage()
+		DetailedUsage()
 		os.Exit(1)
 	}
 
@@ -98,8 +121,12 @@ func main() {
 		pathEnv, keyEnv, editorEnv                                     string
 		editorCmd                                                      []string
 		idFlag                                                         uint
-		shredFlag                                                      bool
+		briefFlag, shredFlag, rawFlag                                  bool
 	)
+
+	HelpCmd := flag.NewFlagSet("help", flag.ExitOnError)
+	HelpCmd.BoolVar(&briefFlag, "brief", false, "Shows only brief usage information.")
+	HelpCmd.BoolVar(&briefFlag, "b", false, "Shows only brief usage information.")
 
 	InitCmd := flag.NewFlagSet("init", flag.ExitOnError)
 	InitCmd.StringVar(&pathFlag, "output", "", "Filepath to database file which will be created, if not already available.")
@@ -130,6 +157,8 @@ func main() {
 	GetCmd.StringVar(&slugFlag, "s", "", "Slug for note")
 	GetCmd.UintVar(&idFlag, "id", 0, "ID for note")
 	GetCmd.UintVar(&idFlag, "i", 0, "ID for note")
+	GetCmd.BoolVar(&rawFlag, "raw", false, "Only print note content")
+	GetCmd.BoolVar(&rawFlag, "r", false, "Only print note content")
 
 	CreateCmd := flag.NewFlagSet("create", flag.ExitOnError)
 	CreateCmd.StringVar(&pathFlag, "db", "", "Path to database")
@@ -174,6 +203,14 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "help", "he", "?":
+		HelpCmd.Parse(os.Args[2:])
+		if briefFlag {
+			flag.Usage()
+		} else {
+			DetailedUsage()
+		}
+
 	case "init", "in":
 		InitCmd.Parse(os.Args[2:])
 		path, key, err := utils.GetPaths(pathFlag, pathEnv, keyFlag, keyEnv, true)
@@ -199,8 +236,26 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error writing note: %v", err)
 		}
-		if len(titleFlag) == 0 || len(messageFlag) == 0 {
-			log.Fatal("Error writing note: title and message must be given.")
+
+		// Check if this program is used in a unix pipe and read from stdin, if this is the case
+		if utils.IsPipe() {
+			messageFlag = ""
+			log.Println("Using text from stdin as message.")
+			reader := bufio.NewReader(os.Stdin)
+			var err error = nil
+			var s string
+			for err == nil {
+				s, err = reader.ReadString('\n')
+				messageFlag = messageFlag + s + "\n"
+			}
+		}
+
+		if len(titleFlag) == 0 {
+			log.Fatal("Error writing note: title must be given.")
+		}
+
+		if len(messageFlag) == 0 {
+			log.Fatal("Error writing note: message must be given.")
 		}
 		writeNote(path, titleFlag, messageFlag)
 
@@ -213,7 +268,7 @@ func main() {
 		if len(slugFlag) == 0 && idFlag == 0 {
 			log.Fatal("Error getting note: ID or Slug must be given.")
 		}
-		getNote(path, key, slugFlag, idFlag)
+		getNote(path, key, slugFlag, idFlag, rawFlag)
 
 	case "create", "cr":
 		CreateCmd.Parse(os.Args[2:])
@@ -264,7 +319,7 @@ func initAen(path string, keyPath string, aliasFlag string) (err error) {
 	if err != nil {
 		return err
 	}
-	log.Printf("Public key: %s\n", key.Recipient().String())
+	fmt.Printf("Public key: %s\n", key.Recipient().String())
 
 	db, err := aen.OpenDatabase(path, true)
 	if err != nil {
@@ -302,7 +357,7 @@ func listNotes(pathFlag string) {
 		return
 	}
 	model.SortNoteSlice(notes)
-	log.Printf("| %-5s | %-25s | %-25s | %-25s |\n", "ID", "Title", "Creation time", "Slug")
+	fmt.Printf("| %-5s | %-25s | %-25s | %-25s |\n", "ID", "Title", "Creation time", "Slug")
 	var title string
 	for idx, note := range notes {
 		if len(note.Title) > 25 {
@@ -310,7 +365,7 @@ func listNotes(pathFlag string) {
 		} else {
 			title = note.Title
 		}
-		log.Printf("| %-5s | %-25s | %-25s | %-25s |\n", fmt.Sprintf("%d", idx+1), title, note.Time.Format("2006-01-02 15:04:05"), note.Slug())
+		fmt.Printf("| %-5s | %-25s | %-25s | %-25s |\n", fmt.Sprintf("%d", idx+1), title, note.Time.Format("2006-01-02 15:04:05"), note.Slug())
 	}
 }
 
@@ -468,7 +523,7 @@ func writeNote(pathFlag, titleFlag, messageFlag string) {
 	log.Printf("Successfully written note %s.", encryptedNote.Slug())
 }
 
-func getNote(pathFlag, keyFlag, slugFlag string, idFlag uint) {
+func getNote(pathFlag, keyFlag, slugFlag string, idFlag uint, rawFlag bool) {
 	var encryptedNote *model.EncryptedNote
 	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
@@ -498,9 +553,13 @@ func getNote(pathFlag, keyFlag, slugFlag string, idFlag uint) {
 		log.Fatalf("Could not decrypt note: %v", err)
 	}
 
-	log.Printf("Title: %s (%s)\n", note.Title, note.Uuid.String())
-	log.Printf("Created: %s\n", note.Time.Format("2006-01-02 15:04:05"))
-	log.Printf("Content:\n%s\n", note.Text)
+	if rawFlag {
+		fmt.Printf("%s\n", note.Text)
+	} else {
+		fmt.Printf("Title: %s (%s)\n", note.Title, note.Uuid.String())
+		fmt.Printf("Created: %s\n", note.Time.Format("2006-01-02 15:04:05"))
+		fmt.Printf("Content:\n%s\n", note.Text)
+	}
 }
 
 func deleteNote(pathFlag, slugFlag string, idFlag uint) {
@@ -523,6 +582,7 @@ func deleteNote(pathFlag, slugFlag string, idFlag uint) {
 		if err != nil {
 			log.Fatalf("Couldn't get note by index: %v", err)
 		}
+		slugFlag = note.Slug()
 		err = db.DeleteNoteBySlug(note.Slug())
 	} else {
 		err = errors.New("either of slug or id must be given")
@@ -530,6 +590,7 @@ func deleteNote(pathFlag, slugFlag string, idFlag uint) {
 	if err != nil {
 		log.Fatalf("Could not delete note: %v", err)
 	}
+	log.Printf("Deleted note %s.", slugFlag)
 }
 
 func listRecipients(pathFlag string) {

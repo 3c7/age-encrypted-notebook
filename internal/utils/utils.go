@@ -61,3 +61,9 @@ func GetPaths(pathFlag, pathEnv, keyFlag, keyEnv string, keyNeeded bool) (path, 
 	}
 	return path, key, nil
 }
+
+// Checks if programm is called in a pipe
+func IsPipe() bool {
+	fi, _ := os.Stdin.Stat()
+	return fi.Mode()&os.ModeCharDevice == 0
+}
