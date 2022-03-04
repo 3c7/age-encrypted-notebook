@@ -246,7 +246,7 @@ func main() {
 			var s string
 			for err == nil {
 				s, err = reader.ReadString('\n')
-				messageFlag = messageFlag + s + "\n"
+				messageFlag = messageFlag + s
 			}
 		}
 
