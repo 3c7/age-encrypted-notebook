@@ -44,7 +44,7 @@ More details via "aen help" or with parameter "--help".
 
 const help string = `Age Encrypted Notebook $(VERSION)
 
-* DB and keyfile paths can also be given via evironment variables AENDB and AENKEY.
+* DB and keyfile paths can also be given via environment variables AENDB and AENKEY.
 ** The default editor can be changed through setting the environment variable AENEDITOR.
 
 Usage:
@@ -246,7 +246,7 @@ func main() {
 			var s string
 			for err == nil {
 				s, err = reader.ReadString('\n')
-				messageFlag = messageFlag + s + "\n"
+				messageFlag = messageFlag + s
 			}
 		}
 

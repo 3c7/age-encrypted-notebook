@@ -151,7 +151,7 @@ func (db *Database) GetEncryptedNoteByIndex(idx int) (encryptedNote *model.Encry
 		return nil, err
 	}
 
-	if len(notes)+1 <= idx {
+	if len(notes) < idx {
 		return nil, errors.New("index is out of range")
 	}
 
