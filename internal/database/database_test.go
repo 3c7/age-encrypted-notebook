@@ -134,3 +134,67 @@ func TestMultipleRecipients(t *testing.T) {
 		}
 	}
 }
+
+func TestRemovingRecipients(t *testing.T) {
+	file, err := ioutil.TempFile("", "notes.*.db")
+	if err != nil {
+		t.Errorf("Could not create temp file: %v", err)
+	}
+	defer os.Remove(file.Name())
+
+	DB := database.NewDatabaseInstance(file.Name())
+	if err := DB.Open(); err != nil {
+		t.Errorf("Could not open database: %v", err)
+	}
+	defer DB.Close()
+
+	i1, _ := age.GenerateX25519Identity()
+	i2, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Errorf("Error during identity generation: %v", err)
+	}
+	t.Logf("Got recipient %s", i1.Recipient().String())
+	t.Logf("Got recipient %s", i2.Recipient().String())
+
+	r1 := model.Recipient{
+		Alias:     "Test1",
+		Publickey: i1.Recipient().String(),
+	}
+	r2 := model.Recipient{
+		Alias:     "Test2",
+		Publickey: i2.Recipient().String(),
+	}
+
+	_ = DB.AddRecipient(r1)
+	err = DB.AddRecipient(r2)
+	if err != nil {
+		t.Errorf("Error during recipient addition: %v", err)
+	}
+
+	recipients, err := DB.GetRecipients()
+	if err != nil {
+		t.Errorf("Error during loading recipients: %v", err)
+	}
+
+	for _, r := range recipients {
+		if r.Alias != r1.Alias && r.Alias != r2.Alias {
+			t.Errorf("Unknown recipient: %s", r.Alias)
+		}
+	}
+
+	err = DB.RemoveRecipientByAlias("Test1")
+	if err != nil {
+		t.Errorf("Error during removing recipient: %v", err)
+	}
+
+	recipients, err = DB.GetRecipients()
+	if err != nil {
+		t.Errorf("Error during loading recipients: %v", err)
+	}
+
+	for _, r := range recipients {
+		if r.Alias == r1.Alias {
+			t.Errorf("Recipient uses alias which should already be removed: %s", r.Alias)
+		}
+	}
+}
