@@ -159,7 +159,7 @@ func (db *Database) GetEncryptedNoteByIndex(idx int) (encryptedNote *model.Encry
 	return &notes[idx-1], nil
 }
 
-// Receives recipients as model.Recipient from database
+// GetRecipients receives recipients as model.Recipient from database
 func (db *Database) GetRecipients() (recipients []model.Recipient, err error) {
 	if !db.isOpen {
 		return nil, errors.New("database is not open")
@@ -178,7 +178,7 @@ func (db *Database) GetRecipients() (recipients []model.Recipient, err error) {
 	return recipients, err
 }
 
-// Calls GetRecipients and converts the results to []age.X25519Recipient
+// GetAgeRecipients calls GetRecipients and converts the results to []age.X25519Recipient
 func (db *Database) GetAgeRecipients() (ageRecipients []age.X25519Recipient, err error) {
 	recipients, err := db.GetRecipients()
 	if err != nil {
@@ -194,7 +194,7 @@ func (db *Database) GetAgeRecipients() (ageRecipients []age.X25519Recipient, err
 	return ageRecipients, nil
 }
 
-// Adds a recipient via model.Recipient struct. If the alias matches an already given recipient,
+// AddRecipient adds a recipient via model.Recipient struct. If the alias matches an already given recipient,
 // the public key will be overwritten.
 func (db *Database) AddRecipient(r model.Recipient) (err error) {
 	recipients, err := db.GetRecipients()
@@ -224,4 +224,22 @@ func (db *Database) AddRecipient(r model.Recipient) (err error) {
 		return db.writeToBucket(tx, []byte("config"), []byte("recipients"), buf)
 	})
 	return err
+}
+
+// RemoveRecipientByAlias removes a recipient identified by its model.Recipient.Alias from the database.
+func (db *Database) RemoveRecipientByAlias(alias string) (err error) {
+	recipients, err := db.GetRecipients()
+	for idx, r := range recipients {
+		if r.Alias == alias {
+			recipients = append(recipients[:idx], recipients[idx+1:]...)
+			buf, err := json.Marshal(recipients)
+			if err != nil {
+				return err
+			}
+			return db.Handle.Update(func(tx *bolt.Tx) error {
+				return db.writeToBucket(tx, []byte("config"), []byte("recipients"), buf)
+			})
+		}
+	}
+	return errors.New("alias not found")
 }

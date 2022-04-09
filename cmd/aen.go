@@ -37,7 +37,7 @@ Subcommands:
   get         (g)   (-d|--db) <DB path> (-k|--key) <key path>
                     (-s|--slug) <slug> (-i|--id) <id> (-r|--raw)
   remove      (rm)  (-d|--db) <DB path> (-s|--slug) <slug> (-i|--id) <id>
-  recipients  (re)  (-d|--db) <DB path>
+  recipients  (re)  (-d|--db) <DB path> (-r|--remove) <alias>
 
 More details via "aen help" or with parameter "--help".
 `
@@ -92,6 +92,7 @@ aen remove (rm)        Removes note by its slug or id from the database
 
 aen recipients (re)   Lists all recipients and their aliases
   -d, --db            - Path to DB *
+  -r, --remove        - Remove recipient identified by its alias
 `
 
 func main() {
@@ -191,6 +192,8 @@ func main() {
 	RecipientsCmd := flag.NewFlagSet("recipients", flag.ExitOnError)
 	RecipientsCmd.StringVar(&pathFlag, "db", "", "Path to database")
 	RecipientsCmd.StringVar(&pathFlag, "d", "", "Path to database")
+	RecipientsCmd.StringVar(&aliasFlag, "remove", "", "Remove recipient with this alias")
+	RecipientsCmd.StringVar(&aliasFlag, "r", "", "Remove recipient with this alias")
 
 	pathEnv = os.Getenv("AENDB")
 	keyEnv = os.Getenv("AENKEY")
@@ -303,7 +306,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error listing recipients: %v", err)
 		}
-		listRecipients(path)
+		listRecipients(path, aliasFlag)
 
 	default:
 		flag.Usage()
@@ -593,12 +596,20 @@ func deleteNote(pathFlag, slugFlag string, idFlag uint) {
 	log.Printf("Deleted note %s.", slugFlag)
 }
 
-func listRecipients(pathFlag string) {
+func listRecipients(pathFlag, aliasFlag string) {
 	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
 		log.Fatalf("Error opening database: %v", err)
 	}
 	defer db.Close()
+
+	if aliasFlag != "" {
+		err = db.RemoveRecipientByAlias(aliasFlag)
+		if err != nil {
+			log.Fatalf("Error removing recipient %s: %v", aliasFlag, err)
+		}
+		return
+	}
 
 	recipients, err := db.GetRecipients()
 	if err != nil {
