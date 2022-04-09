@@ -7,7 +7,7 @@
 ```
 Age Encrypted Notebook (devel)
 
-* DB and keyfile paths can also be given via evironment variables AENDB and AENKEY.
+* DB and keyfile paths can also be given via environment variables AENDB and AENKEY.
 ** The default editor can be changed through setting the environment variable AENEDITOR.
 
 Usage:
@@ -55,6 +55,7 @@ aen remove (rm)        Removes note by its slug or id from the database
 
 aen recipients (re)   Lists all recipients and their aliases
   -d, --db            - Path to DB *
+  -r, --remove        - Remove recipient identified by its alias
 ```
 First, if not already available, key and database must be generated using `aen init`. This generates a key as well as the database and adds the public key as recipient to the DB. Then other commands can be used to handle encrypted notes in the database. The database path as well as the key path and the editor command can also be set via environment variables:
 
