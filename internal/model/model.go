@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"os"
+	gopath "path"
 	"regexp"
 	"sort"
 	"strings"
@@ -39,11 +41,23 @@ func (r *Recipient) Json() (j []byte, err error) {
 	return json.Marshal(r)
 }
 
+type NoteType int8
+
+const (
+	TextNote NoteType = iota
+	FileNote
+)
+
 type Note struct {
 	Uuid  uuid.UUID
 	Time  time.Time
 	Title string
 	Text  string
+}
+
+type BinaryNote struct {
+	Note
+	Content []byte
 }
 
 func NewNote(title string, text string) (note *Note) {
@@ -52,6 +66,14 @@ func NewNote(title string, text string) (note *Note) {
 		time.Now(),
 		title,
 		text,
+	}
+}
+
+func NewBinaryNote(title string, content []byte) (note *BinaryNote) {
+	textNote := NewNote(title, "")
+	return &BinaryNote{
+		*textNote,
+		content,
 	}
 }
 
@@ -85,6 +107,28 @@ func NotefileToNote(path string) (note *Note, err error) {
 	}, nil
 }
 
+func BinaryNoteFromFile(path string, title string) (bNote *BinaryNote, err error) {
+	if _, err = os.Stat(path); err != nil {
+		return nil, err
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if title == "" {
+		title = gopath.Base(path)
+	}
+	return &BinaryNote{
+		Note: Note{
+			Uuid:  uuid.New(),
+			Title: title,
+			Time:  time.Now(),
+		},
+		Content: content,
+	}, nil
+}
+
 func (note *Note) Encrypt(x25519recipients ...age.X25519Recipient) (ciphertext string, err error) {
 	var recipients []age.Recipient
 	for r := range x25519recipients {
@@ -96,7 +140,7 @@ func (note *Note) Encrypt(x25519recipients ...age.X25519Recipient) (ciphertext s
 		log.Fatalf("Failed to create encrypted note with uuid %s.", note.Uuid.String())
 	}
 	if _, err := io.WriteString(w, note.Text); err != nil {
-		log.Fatalf("Failed to write encrypted note with uuid %s.", note.Uuid.String())
+		log.Fatalf("Failed to encrypt data for note %s: %v", note.Uuid.String(), err)
 	}
 	if err := w.Close(); err != nil {
 		log.Fatalf("Error on closing encrypted note with uuid %s.", note.Uuid.String())
@@ -111,6 +155,7 @@ func (note *Note) ToEncryptedNote(x25519recipients ...age.X25519Recipient) (encr
 		note.Time,
 		note.Title,
 		ciphertext,
+		false,
 	}, err
 }
 
@@ -124,11 +169,42 @@ func (note *Note) ToFile(path string) (err error) {
 	return os.WriteFile(path, []byte(content), 0600)
 }
 
+func (bNote *BinaryNote) Encrypt(x25519recipients ...age.X25519Recipient) (ciphertext string, err error) {
+	var recipients []age.Recipient
+	for r := range x25519recipients {
+		recipients = append(recipients, &x25519recipients[r])
+	}
+	out := &bytes.Buffer{}
+	w, err := age.Encrypt(out, recipients...)
+	if err != nil {
+		log.Fatalf("Failed to create encrypted note with uuid %s.", bNote.Uuid.String())
+	}
+	if _, err = w.Write(bNote.Content); err != nil {
+		log.Fatalf("Failed to encrypt data for note %s: %v", bNote.Uuid.String(), err)
+	}
+	if err := w.Close(); err != nil {
+		log.Fatalf("Error on closing encrypted note with uuid %s.", bNote.Uuid.String())
+	}
+	return base64.StdEncoding.EncodeToString(out.Bytes()), nil
+}
+
+func (bNote *BinaryNote) ToEncryptedNote(x25519recipients ...age.X25519Recipient) (encryptedNote EncryptedNote, err error) {
+	ciphertext, err := bNote.Encrypt(x25519recipients...)
+	return EncryptedNote{
+		bNote.Uuid,
+		bNote.Time,
+		bNote.Title,
+		ciphertext,
+		true,
+	}, err
+}
+
 type EncryptedNote struct {
 	Uuid       uuid.UUID
 	Time       time.Time
 	Title      string
 	Ciphertext string
+	IsBinary   bool
 }
 
 func (encryptedNote *EncryptedNote) Slug() (slug string) {
@@ -159,13 +235,48 @@ func (encryptedNote EncryptedNote) Decrypt(identity age.Identity) (text string, 
 	return buffer.String(), nil
 }
 
+func (encryptedNote EncryptedNote) DecryptContent(identity age.Identity) (content []byte, err error) {
+	var decoded []byte
+	if decoded, err = base64.StdEncoding.DecodeString(encryptedNote.Ciphertext); err != nil {
+		log.Fatalf("Error decoding encrypted note's ciphertext: %v.", err)
+	}
+	r, err := age.Decrypt(bytes.NewReader(decoded), identity)
+	if err != nil {
+		return []byte(""), err
+	}
+	if content, err = io.ReadAll(r); err != nil {
+		log.Fatalf("Could not decrypt note with uuid %s.", encryptedNote.Uuid.String())
+	}
+	return
+}
+
 func (encryptedNote EncryptedNote) ToDecryptedNote(identity age.Identity) (note Note, err error) {
+	if encryptedNote.IsBinary {
+		return Note{}, errors.New("the given note contains a file, therefore ToDecryptedBinaryNote must be used")
+	}
+
 	text, err := encryptedNote.Decrypt(identity)
 	return Note{
 		encryptedNote.Uuid,
 		encryptedNote.Time,
 		encryptedNote.Title,
 		text,
+	}, err
+}
+
+func (encryptedNote EncryptedNote) ToDecryptedBinaryNote(identity age.Identity) (bNote BinaryNote, err error) {
+	if !encryptedNote.IsBinary {
+		return BinaryNote{}, errors.New("the given note does not contain a file, please use ToDecryptedNote for decrypting text only notes")
+	}
+	content, err := encryptedNote.DecryptContent(identity)
+	return BinaryNote{
+		Note{
+			encryptedNote.Uuid,
+			encryptedNote.Time,
+			encryptedNote.Title,
+			"",
+		},
+		content,
 	}, err
 }
 

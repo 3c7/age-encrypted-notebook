@@ -2,6 +2,8 @@ package model_test
 
 import (
 	"encoding/json"
+	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -140,5 +142,84 @@ func TestEncryptionWithTwoRecipients(t *testing.T) {
 	}
 	if noteText2 != content {
 		t.Fatalf("decrypted content (2) should be %s but was %s", content, noteText2)
+	}
+}
+
+func TestBinaryNoteCreation(t *testing.T) {
+	content := []byte("This is a string, but it could be any data.")
+	binNote := model.NewBinaryNote("Binary Note Title", content)
+
+	for i := range content {
+		if content[i] != binNote.Content[i] {
+			t.Fatalf("note content differs at position %d", i)
+		}
+	}
+}
+
+// TestBinaryNoteSlug is basically redundant as the Slug functions is from the Note struct.
+func TestBinaryNoteSlug(t *testing.T) {
+	content := []byte("This is a string, but it could be any data.")
+	slug := "binary-note-title"
+	binNote := model.NewBinaryNote("Binary Note Title", content)
+
+	if binNote.Slug() != slug {
+		t.Fatalf("note slug should be %s but was %s", slug, binNote.Slug())
+	}
+}
+
+func TestBinaryNoteEncryption(t *testing.T) {
+	data := []byte{0xc0, 0xde, 0xc0, 0xff, 0xee}
+	bNote := model.NewBinaryNote("My Binary Note", data)
+	r1, err := age.ParseX25519Recipient(pub)
+	r2, err := age.ParseX25519Recipient(pub2)
+	i1, err := age.ParseX25519Identity(key)
+	recipients := []age.X25519Recipient{*r1, *r2}
+	if err != nil {
+		t.Fatal("error parsing recipients or identities")
+	}
+
+	encryptedNote, err := bNote.ToEncryptedNote(recipients...)
+	if err != nil {
+		t.Fatalf("could not encrypt note: %v", err)
+	}
+
+	t.Logf(">>> DEBUG encrypted content is %s.", encryptedNote.Ciphertext)
+
+	_, err = encryptedNote.ToDecryptedNote(i1)
+	if err == nil {
+		t.Fatalf("function call ToDecryptNote should return an error but was nil")
+	}
+
+	decryptedNote, err := encryptedNote.ToDecryptedBinaryNote(i1)
+	if err != nil {
+		t.Fatalf("could not decrypt note: %v", err)
+	}
+	for i := range decryptedNote.Content {
+		if decryptedNote.Content[i] != data[i] {
+			t.Fatalf("note content differs at position %d", i)
+		}
+	}
+}
+
+func TestBinaryNoteFromFile(t *testing.T) {
+	content := []byte("This is the content!")
+	tmp := t.TempDir()
+	err := os.WriteFile(path.Join(tmp, "content"), content, 0600)
+	if err != nil {
+		t.Fatalf("error writing temporary file: %v", err)
+	}
+
+	bNote, err := model.BinaryNoteFromFile(path.Join(tmp, "content"), "")
+	if err != nil {
+		t.Fatalf("error creating binary note from file: %v", err)
+	}
+
+	if bNote.Title != "content" {
+		t.Fatalf("note title is %s but should be content", bNote.Title)
+	}
+	for i := range bNote.Content {
+		if bNote.Content[i] != content[i] {
+			t.Fatalf("content differs at position %d", i)
+		}
 	}
 }
