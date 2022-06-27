@@ -147,7 +147,7 @@ func TestEncryptionWithTwoRecipients(t *testing.T) {
 
 func TestBinaryNoteCreation(t *testing.T) {
 	content := []byte("This is a string, but it could be any data.")
-	binNote := model.NewBinaryNote("Binary Note Title", content)
+	binNote := model.NewFileNote("Binary Note Title", content)
 
 	for i := range content {
 		if content[i] != binNote.Content[i] {
@@ -160,7 +160,7 @@ func TestBinaryNoteCreation(t *testing.T) {
 func TestBinaryNoteSlug(t *testing.T) {
 	content := []byte("This is a string, but it could be any data.")
 	slug := "binary-note-title"
-	binNote := model.NewBinaryNote("Binary Note Title", content)
+	binNote := model.NewFileNote("Binary Note Title", content)
 
 	if binNote.Slug() != slug {
 		t.Fatalf("note slug should be %s but was %s", slug, binNote.Slug())
@@ -169,7 +169,7 @@ func TestBinaryNoteSlug(t *testing.T) {
 
 func TestBinaryNoteEncryption(t *testing.T) {
 	data := []byte{0xc0, 0xde, 0xc0, 0xff, 0xee}
-	bNote := model.NewBinaryNote("My Binary Note", data)
+	bNote := model.NewFileNote("My Binary Note", data)
 	r1, err := age.ParseX25519Recipient(pub)
 	r2, err := age.ParseX25519Recipient(pub2)
 	i1, err := age.ParseX25519Identity(key)
@@ -190,7 +190,7 @@ func TestBinaryNoteEncryption(t *testing.T) {
 		t.Fatalf("function call ToDecryptNote should return an error but was nil")
 	}
 
-	decryptedNote, err := encryptedNote.ToDecryptedBinaryNote(i1)
+	decryptedNote, err := encryptedNote.ToDecryptedFileNote(i1)
 	if err != nil {
 		t.Fatalf("could not decrypt note: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestBinaryNoteFromFile(t *testing.T) {
 		t.Fatalf("error writing temporary file: %v", err)
 	}
 
-	bNote, err := model.BinaryNoteFromFile(path.Join(tmp, "content"), "")
+	bNote, err := model.FileNoteFromFile(path.Join(tmp, "content"), "")
 	if err != nil {
 		t.Fatalf("error creating binary note from file: %v", err)
 	}

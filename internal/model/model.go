@@ -41,13 +41,6 @@ func (r *Recipient) Json() (j []byte, err error) {
 	return json.Marshal(r)
 }
 
-type NoteType int8
-
-const (
-	TextNote NoteType = iota
-	FileNote
-)
-
 type Note struct {
 	Uuid  uuid.UUID
 	Time  time.Time
@@ -55,7 +48,7 @@ type Note struct {
 	Text  string
 }
 
-type BinaryNote struct {
+type FileNote struct {
 	Note
 	Content []byte
 }
@@ -69,9 +62,9 @@ func NewNote(title string, text string) (note *Note) {
 	}
 }
 
-func NewBinaryNote(title string, content []byte) (note *BinaryNote) {
+func NewFileNote(title string, content []byte) (note *FileNote) {
 	textNote := NewNote(title, "")
-	return &BinaryNote{
+	return &FileNote{
 		*textNote,
 		content,
 	}
@@ -107,7 +100,7 @@ func NotefileToNote(path string) (note *Note, err error) {
 	}, nil
 }
 
-func BinaryNoteFromFile(path string, title string) (bNote *BinaryNote, err error) {
+func FileNoteFromFile(path string, title string) (bNote *FileNote, err error) {
 	if _, err = os.Stat(path); err != nil {
 		return nil, err
 	}
@@ -119,7 +112,7 @@ func BinaryNoteFromFile(path string, title string) (bNote *BinaryNote, err error
 	if title == "" {
 		title = gopath.Base(path)
 	}
-	return &BinaryNote{
+	return &FileNote{
 		Note: Note{
 			Uuid:  uuid.New(),
 			Title: title,
@@ -169,7 +162,7 @@ func (note *Note) ToFile(path string) (err error) {
 	return os.WriteFile(path, []byte(content), 0600)
 }
 
-func (bNote *BinaryNote) Encrypt(x25519recipients ...age.X25519Recipient) (ciphertext string, err error) {
+func (bNote *FileNote) Encrypt(x25519recipients ...age.X25519Recipient) (ciphertext string, err error) {
 	var recipients []age.Recipient
 	for r := range x25519recipients {
 		recipients = append(recipients, &x25519recipients[r])
@@ -188,7 +181,7 @@ func (bNote *BinaryNote) Encrypt(x25519recipients ...age.X25519Recipient) (ciphe
 	return base64.StdEncoding.EncodeToString(out.Bytes()), nil
 }
 
-func (bNote *BinaryNote) ToEncryptedNote(x25519recipients ...age.X25519Recipient) (encryptedNote EncryptedNote, err error) {
+func (bNote *FileNote) ToEncryptedNote(x25519recipients ...age.X25519Recipient) (encryptedNote EncryptedNote, err error) {
 	ciphertext, err := bNote.Encrypt(x25519recipients...)
 	return EncryptedNote{
 		bNote.Uuid,
@@ -204,7 +197,7 @@ type EncryptedNote struct {
 	Time       time.Time
 	Title      string
 	Ciphertext string
-	IsBinary   bool
+	IsFile     bool
 }
 
 func (encryptedNote *EncryptedNote) Slug() (slug string) {
@@ -251,8 +244,8 @@ func (encryptedNote EncryptedNote) DecryptContent(identity age.Identity) (conten
 }
 
 func (encryptedNote EncryptedNote) ToDecryptedNote(identity age.Identity) (note Note, err error) {
-	if encryptedNote.IsBinary {
-		return Note{}, errors.New("the given note contains a file, therefore ToDecryptedBinaryNote must be used")
+	if encryptedNote.IsFile {
+		return Note{}, errors.New("the given note contains a file, therefore ToDecryptedFileNote must be used")
 	}
 
 	text, err := encryptedNote.Decrypt(identity)
@@ -264,12 +257,12 @@ func (encryptedNote EncryptedNote) ToDecryptedNote(identity age.Identity) (note 
 	}, err
 }
 
-func (encryptedNote EncryptedNote) ToDecryptedBinaryNote(identity age.Identity) (bNote BinaryNote, err error) {
-	if !encryptedNote.IsBinary {
-		return BinaryNote{}, errors.New("the given note does not contain a file, please use ToDecryptedNote for decrypting text only notes")
+func (encryptedNote EncryptedNote) ToDecryptedFileNote(identity age.Identity) (bNote FileNote, err error) {
+	if !encryptedNote.IsFile {
+		return FileNote{}, errors.New("the given note does not contain a file, please use ToDecryptedNote for decrypting text only notes")
 	}
 	content, err := encryptedNote.DecryptContent(identity)
-	return BinaryNote{
+	return FileNote{
 		Note{
 			encryptedNote.Uuid,
 			encryptedNote.Time,
