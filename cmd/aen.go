@@ -28,16 +28,18 @@ Write age encrypted text snippets ("notes") into a Bolt database.
 
 Subcommands:
   help        (?)   (-b|--brief)
-  init        (in)  (-o|--output) <DB path> (-k|--key) <key path>
-  list        (ls)  (-d|--db) <DB path>
+
+  add         (a)   (-d|--db) <DB path> (-t|--title) <title> (-f|--file) <file path>
   create      (cr)  (-d|--db) <DB path> (-S|--shred)
   edit        (ed)  (-d|--db) <DB path> (-k|--key) <key path>
                     (-s|--slug) <slug> (-i|--id) <id> (-S|--shred)
-  write       (wr)  (-d|--db) <DB path> (-t|--title) <title> (-m|--message) <message>
   get         (g)   (-d|--db) <DB path> (-k|--key) <key path>
                     (-s|--slug) <slug> (-i|--id) <id> (-r|--raw)
-  remove      (rm)  (-d|--db) <DB path> (-s|--slug) <slug> (-i|--id) <id>
+  init        (in)  (-o|--output) <DB path> (-k|--key) <key path>
+  list        (ls)  (-d|--db) <DB path>
   recipients  (re)  (-d|--db) <DB path> (-r|--remove) <alias>
+  remove      (rm)  (-d|--db) <DB path> (-s|--slug) <slug> (-i|--id) <id>
+  write       (wr)  (-d|--db) <DB path> (-t|--title) <title> (-m|--message) <message>
 
 More details via "aen help" or with parameter "--help".
 `
@@ -49,13 +51,10 @@ const help string = `Age Encrypted Notebook $(VERSION)
 
 Usage:
 
-aen init (in)          Initializes the private key and the database if not already given
-                       and adds the own public key to the database
-  -o, --output         - Path to DB *
-  -k, --key            - Path to age keyfile *
-
-aen list (ls)          Lists the slugs of available notes sorted by their timestamp
-  -d, --db             - Path to DB *
+aen add (a)            Adds a file to the database
+  -d, --db             - Path to database
+  -t, --title          - Title for the note, default is the filename
+  -f, --file           - Path to the file which should be added to the DB
 
 aen create (cr)        Creates a new note with an editor using the first line of the created
                        note as title
@@ -71,17 +70,24 @@ aen edit (ed)          Edits a note given by slug or id
   -i, --id             - ID of note to get
   -S, --shred          - Overwrites temporary file with random data
 
-aen write (wr)         Writes a new note
-  -d, --db             - Path to DB *
-  -t, --title          - Title of the note
-  -m, --message        - Message of the note
-
 aen get (g)            Get and decrypt a note by its slug or id
   -d, --db             - Path to DB *
   -k, --key            - Path to age keyfile *
   -s, --slug           - Slug of note to get
   -i, --id             - ID of note to get
   -r, --raw            - Only print note content without any metadata
+
+aen init (in)          Initializes the private key and the database if not already given
+                       and adds the own public key to the database
+  -o, --output         - Path to DB *
+  -k, --key            - Path to age keyfile *
+
+aen list (ls)          Lists the slugs of available notes sorted by their timestamp
+  -d, --db             - Path to DB *
+
+aen recipients (re)    Lists all recipients and their aliases
+  -d, --db             - Path to DB *
+  -r, --remove         - Remove recipient identified by its alias
 
 aen remove (rm)        Removes note by its slug or id from the database
                        NOTE: While the note is not retrievable through aen anymore,
@@ -90,9 +96,10 @@ aen remove (rm)        Removes note by its slug or id from the database
   -s, --slug           - Slug of note to get
   -i, --id             - ID of note to get
 
-aen recipients (re)   Lists all recipients and their aliases
-  -d, --db            - Path to DB *
-  -r, --remove        - Remove recipient identified by its alias
+aen write (wr)         Writes a new note
+  -d, --db             - Path to DB *
+  -t, --title          - Title of the note
+  -m, --message        - Message of the note
 `
 
 func main() {
@@ -118,11 +125,11 @@ func main() {
 	}
 
 	var (
-		pathFlag, keyFlag, titleFlag, messageFlag, slugFlag, aliasFlag string
-		pathEnv, keyEnv, editorEnv                                     string
-		editorCmd                                                      []string
-		idFlag                                                         uint
-		briefFlag, shredFlag, rawFlag                                  bool
+		pathFlag, keyFlag, titleFlag, messageFlag, slugFlag, aliasFlag, fileFlag string
+		pathEnv, keyEnv, editorEnv                                               string
+		editorCmd                                                                []string
+		idFlag                                                                   uint
+		briefFlag, shredFlag, rawFlag                                            bool
 	)
 
 	HelpCmd := flag.NewFlagSet("help", flag.ExitOnError)
@@ -160,6 +167,8 @@ func main() {
 	GetCmd.UintVar(&idFlag, "i", 0, "ID for note")
 	GetCmd.BoolVar(&rawFlag, "raw", false, "Only print note content")
 	GetCmd.BoolVar(&rawFlag, "r", false, "Only print note content")
+	GetCmd.StringVar(&fileFlag, "output", "", "Path to output file")
+	GetCmd.StringVar(&fileFlag, "o", "", "Path to output file")
 
 	CreateCmd := flag.NewFlagSet("create", flag.ExitOnError)
 	CreateCmd.StringVar(&pathFlag, "db", "", "Path to database")
@@ -194,6 +203,14 @@ func main() {
 	RecipientsCmd.StringVar(&pathFlag, "d", "", "Path to database")
 	RecipientsCmd.StringVar(&aliasFlag, "remove", "", "Remove recipient with this alias")
 	RecipientsCmd.StringVar(&aliasFlag, "r", "", "Remove recipient with this alias")
+
+	AddCmd := flag.NewFlagSet("add", flag.ExitOnError)
+	AddCmd.StringVar(&pathFlag, "db", "", "Path to database")
+	AddCmd.StringVar(&pathFlag, "d", "", "Path to database")
+	AddCmd.StringVar(&fileFlag, "file", "", "Path to file")
+	AddCmd.StringVar(&fileFlag, "f", "", "Path to file")
+	AddCmd.StringVar(&titleFlag, "title", "", "Title of the note (default: filename)")
+	AddCmd.StringVar(&titleFlag, "t", "", "Title of the note (default: filename)")
 
 	pathEnv = os.Getenv("AENDB")
 	keyEnv = os.Getenv("AENKEY")
@@ -271,7 +288,7 @@ func main() {
 		if len(slugFlag) == 0 && idFlag == 0 {
 			log.Fatal("Error getting note: ID or Slug must be given.")
 		}
-		getNote(path, key, slugFlag, idFlag, rawFlag)
+		getNote(path, key, slugFlag, fileFlag, idFlag, rawFlag)
 
 	case "create", "cr":
 		CreateCmd.Parse(os.Args[2:])
@@ -308,6 +325,13 @@ func main() {
 		}
 		listRecipients(path, aliasFlag)
 
+	case "add", "a":
+		AddCmd.Parse(os.Args[2:])
+		path, _, err := utils.GetPaths(pathFlag, pathEnv, "", "", false)
+		if err != nil {
+			log.Fatalf("Error adding file to database: %v", err)
+		}
+		addFile(path, fileFlag, titleFlag)
 	default:
 		flag.Usage()
 		log.Fatalf("Subcommand unknown: %s", os.Args[1])
@@ -360,15 +384,21 @@ func listNotes(pathFlag string) {
 		return
 	}
 	model.SortNoteSlice(notes)
-	fmt.Printf("| %-5s | %-25s | %-25s | %-25s |\n", "ID", "Title", "Creation time", "Slug")
+	fmt.Printf("| %-5s | %-5s | %-25s | %-25s | %-25s |\n", "ID", "Type", "Title", "Creation time", "Slug")
 	var title string
 	for idx, note := range notes {
+		var noteType string
+		if note.IsFile {
+			noteType = "File"
+		} else {
+			noteType = "Text"
+		}
 		if len(note.Title) > 25 {
 			title = note.Title[:22] + "..."
 		} else {
 			title = note.Title
 		}
-		fmt.Printf("| %-5s | %-25s | %-25s | %-25s |\n", fmt.Sprintf("%d", idx+1), title, note.Time.Format("2006-01-02 15:04:05"), note.Slug())
+		fmt.Printf("| %-5s | %-5s | %-25s | %-25s | %-25s |\n", fmt.Sprintf("%d", idx+1), noteType, title, note.Time.Format("2006-01-02 15:04:05"), note.Slug())
 	}
 }
 
@@ -440,6 +470,10 @@ func editNote(pathFlag, keyFlag, slugFlag string, idFlag int, editorCmd []string
 		}
 	} else {
 		log.Fatal("Error receiving note from DB: either slug or id must be given.")
+	}
+
+	if note.IsFile {
+		log.Fatalf("Editing binary notes is not implemented.")
 	}
 
 	identity, err := utils.IdentityFromKeyfile(keyFlag)
@@ -526,7 +560,8 @@ func writeNote(pathFlag, titleFlag, messageFlag string) {
 	log.Printf("Successfully written note %s.", encryptedNote.Slug())
 }
 
-func getNote(pathFlag, keyFlag, slugFlag string, idFlag uint, rawFlag bool) {
+// Receive a note from the database and write it to a file in case its a FileNote
+func getNote(pathFlag, keyFlag, slugFlag, fileFlag string, idFlag uint, rawFlag bool) {
 	var encryptedNote *model.EncryptedNote
 	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
@@ -551,20 +586,40 @@ func getNote(pathFlag, keyFlag, slugFlag string, idFlag uint, rawFlag bool) {
 		}
 	}
 
-	note, err := encryptedNote.ToDecryptedNote(identity)
-	if err != nil {
-		log.Fatalf("Could not decrypt note: %v", err)
-	}
+	if encryptedNote.IsFile {
+		var filename string
+		fNote, err := encryptedNote.ToDecryptedFileNote(identity)
+		if err != nil {
+			log.Fatalf("Could not decrypt note: %v", err)
+		}
 
-	if rawFlag {
-		fmt.Printf("%s\n", note.Text)
+		if fileFlag == "" {
+			filename = fileFlag
+		} else {
+			filename = fNote.Title
+		}
+
+		if err = os.WriteFile(filename, fNote.Content, 0600); err != nil {
+			log.Fatalf("Error writing file: %v", err)
+		}
+		log.Printf("Written file to %s.", fileFlag)
 	} else {
-		fmt.Printf("Title: %s (%s)\n", note.Title, note.Uuid.String())
-		fmt.Printf("Created: %s\n", note.Time.Format("2006-01-02 15:04:05"))
-		fmt.Printf("Content:\n%s\n", note.Text)
+		note, err := encryptedNote.ToDecryptedNote(identity)
+		if err != nil {
+			log.Fatalf("Could not decrypt note: %v", err)
+		}
+
+		if rawFlag {
+			fmt.Printf("%s\n", note.Text)
+		} else {
+			fmt.Printf("Title: %s (%s)\n", note.Title, note.Uuid.String())
+			fmt.Printf("Created: %s\n", note.Time.Format("2006-01-02 15:04:05"))
+			fmt.Printf("Content:\n%s\n", note.Text)
+		}
 	}
 }
 
+// Deletes a note from the database by slug or id
 func deleteNote(pathFlag, slugFlag string, idFlag uint) {
 	var err error
 	var note *model.EncryptedNote
@@ -596,6 +651,7 @@ func deleteNote(pathFlag, slugFlag string, idFlag uint) {
 	log.Printf("Deleted note %s.", slugFlag)
 }
 
+// Lists all recipients or remove a recipient with a specific alias
 func listRecipients(pathFlag, aliasFlag string) {
 	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
@@ -623,5 +679,35 @@ func listRecipients(pathFlag, aliasFlag string) {
 		for _, r := range recipients {
 			log.Printf("| %-20s | %-62s |", r.Alias, r.Publickey)
 		}
+	}
+}
+
+// Adds a file as note to the database
+func addFile(pathFlag, fileFlag, titleFlag string) {
+	if fileFlag == "" {
+		log.Fatal("No file given.")
+	}
+
+	db, err := aen.OpenDatabase(pathFlag, false)
+	if err != nil {
+		log.Fatalf("Error opening database: %v", err)
+	}
+	defer db.Close()
+
+	fNote, err := model.FileNoteFromFile(fileFlag, titleFlag)
+	if err != nil {
+		log.Fatalf("Error creating binary note from file: %v", err)
+	}
+
+	x25519Recipients, err := db.GetAgeRecipients()
+	if err != nil {
+		log.Fatalf("Error loading recipients: %v", err)
+	}
+	encryptedNote, err := fNote.ToEncryptedNote(x25519Recipients...)
+	if err != nil {
+		log.Fatalf("Error during note encryption: %v", err)
+	}
+	if err = db.SaveEncryptedNote(&encryptedNote); err != nil {
+		log.Fatalf("Error adding file to database: %v", err)
 	}
 }
