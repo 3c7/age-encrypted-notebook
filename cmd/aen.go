@@ -430,15 +430,15 @@ func listNotes(pathFlag, tagFlag string) {
 		return
 	}
 	model.SortNoteSlice(notes)
-	fmt.Printf("| %-5s | %-5s | %-25s | %-25s | %-25s |\n", "Flags", "ID", "Title", "Creation time", "Slug")
+	fmt.Printf("| %-5s | %-5s | %-50s | %-25s |\n", "Flags", "ID", "Title", "Creation time")
 	var title string
 	for idx, note := range notes {
-		if len(note.Title) > 25 {
-			title = note.Title[:24] + "..."
+		if len(note.Title) > 50 {
+			title = note.Title[:49] + "..."
 		} else {
 			title = note.Title
 		}
-		fmt.Printf("| %-5s | %-5s | %-25s | %-25s | %-25s |\n", note.Flags(), fmt.Sprintf("%d", idx+1), title, note.Time.Format("2006-01-02 15:04:05"), note.Slug())
+		fmt.Printf("| %-5s | %-5s | %-50s | %-25s |\n", note.Flags(), fmt.Sprintf("%d", idx+1), title, note.Time.Format("2006-01-02 15:04:05"))
 	}
 }
 
