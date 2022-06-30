@@ -39,6 +39,8 @@ Subcommands:
   list        (ls)  (-d|--db) <DB path>
   recipients  (re)  (-d|--db) <DB path> (-r|--remove) <alias>
   remove      (rm)  (-d|--db) <DB path> (-s|--slug) <slug> (-i|--id) <id>
+  tag         (t)   (-d|--db) <DB path> (-s|--slug) <slug> (-i|--id) <id>
+                    (-a|--add) <tags> (-r|--remove) <tags>
   write       (wr)  (-d|--db) <DB path> (-t|--title) <title> (-m|--message) <message>
 
 More details via "aen help" or with parameter "--help".
@@ -84,6 +86,12 @@ aen init (in)          Initializes the private key and the database if not alrea
 
 aen list (ls)          Lists the slugs of available notes sorted by their timestamp
   -d, --db             - Path to DB *
+  -t, --tag            - Only display notes with given tag
+
+                       The following flags are used:
+
+					   F - File
+					   T - Tags
 
 aen recipients (re)    Lists all recipients and their aliases
   -d, --db             - Path to DB *
@@ -95,6 +103,13 @@ aen remove (rm)        Removes note by its slug or id from the database
   -d, --db             - Path to DB *
   -s, --slug           - Slug of note to get
   -i, --id             - ID of note to get
+
+aen tag (t)            Adds and removes Tags
+  -d, --db             - Path to DB *
+  -i, --id             - ID of note
+  -s, --slug           - Slug of note
+  -a, --add            - Comma separated list of tags to add
+  -r, --remove         - Comma separated list of tags to remove
 
 aen write (wr)         Writes a new note
   -d, --db             - Path to DB *
@@ -126,6 +141,7 @@ func main() {
 
 	var (
 		pathFlag, keyFlag, titleFlag, messageFlag, slugFlag, aliasFlag, fileFlag string
+		tagAddFlag, tagRemoveFlag, tagFlag                                       string
 		pathEnv, keyEnv, editorEnv                                               string
 		editorCmd                                                                []string
 		idFlag                                                                   uint
@@ -147,6 +163,8 @@ func main() {
 	ListCmd := flag.NewFlagSet("list", flag.ExitOnError)
 	ListCmd.StringVar(&pathFlag, "db", "", "Path to database")
 	ListCmd.StringVar(&pathFlag, "d", "", "Path to database")
+	ListCmd.StringVar(&tagFlag, "tag", "", "Tag to filter for")
+	ListCmd.StringVar(&tagFlag, "t", "", "Tag to filter for")
 
 	WriteCmd := flag.NewFlagSet("write", flag.ExitOnError)
 	WriteCmd.StringVar(&pathFlag, "db", "", "Path to database")
@@ -212,6 +230,18 @@ func main() {
 	AddCmd.StringVar(&titleFlag, "title", "", "Title of the note (default: filename)")
 	AddCmd.StringVar(&titleFlag, "t", "", "Title of the note (default: filename)")
 
+	TagCmd := flag.NewFlagSet("tag", flag.ExitOnError)
+	TagCmd.StringVar(&pathFlag, "db", "", "Path to database")
+	TagCmd.StringVar(&pathFlag, "d", "", "Path to database")
+	TagCmd.StringVar(&slugFlag, "slug", "", "Slug for note")
+	TagCmd.StringVar(&slugFlag, "s", "", "Slug for note")
+	TagCmd.StringVar(&tagAddFlag, "add", "", "Comma separated list of tags to add")
+	TagCmd.StringVar(&tagAddFlag, "a", "", "Comma separated list of tags to add")
+	TagCmd.StringVar(&tagRemoveFlag, "remove", "", "Comma separated list of tags to remove")
+	TagCmd.StringVar(&tagRemoveFlag, "r", "", "Comma separated list of tags to remove")
+	TagCmd.UintVar(&idFlag, "id", 0, "ID for note")
+	TagCmd.UintVar(&idFlag, "i", 0, "ID for note")
+
 	pathEnv = os.Getenv("AENDB")
 	keyEnv = os.Getenv("AENKEY")
 	editorEnv = os.Getenv("AENEDITOR")
@@ -248,7 +278,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error listing notes: %v", err)
 		}
-		listNotes(path)
+		listNotes(path, tagFlag)
 
 	case "write", "wr":
 		WriteCmd.Parse(os.Args[2:])
@@ -304,7 +334,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error editing note: %v", err)
 		}
-		editNote(path, key, slugFlag, int(idFlag), editorCmd, shredFlag)
+		editNote(path, key, slugFlag, idFlag, editorCmd, shredFlag)
 
 	case "remove", "del", "rm":
 		RmCmd.Parse(os.Args[2:])
@@ -332,6 +362,14 @@ func main() {
 			log.Fatalf("Error adding file to database: %v", err)
 		}
 		addFile(path, fileFlag, titleFlag)
+
+	case "tag", "t":
+		TagCmd.Parse(os.Args[2:])
+		path, _, err := utils.GetPaths(pathFlag, pathEnv, "", "", false)
+		if err != nil {
+			log.Fatalf("Error manipulating tags: %v", err)
+		}
+		manipulateTags(path, idFlag, slugFlag, tagAddFlag, tagRemoveFlag)
 	default:
 		flag.Usage()
 		log.Fatalf("Subcommand unknown: %s", os.Args[1])
@@ -368,37 +406,39 @@ func initAen(path string, keyPath string, aliasFlag string) (err error) {
 }
 
 // List all notes available in the database and print them ordered by the creation time.
-func listNotes(pathFlag string) {
+func listNotes(pathFlag, tagFlag string) {
 	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
 		log.Fatalf("Error opening database file: %v", err)
 	}
 	defer db.Close()
 
-	notes, err := db.GetEncryptedNotes()
-	if err != nil {
-		log.Fatalf("Error reading notes: %v", err)
+	var notes []model.EncryptedNote
+	if len(tagFlag) == 0 {
+		notes, err = db.GetEncryptedNotes()
+		if err != nil {
+			log.Fatalf("Error reading notes: %v", err)
+		}
+	} else {
+		notes, err = db.GetEncryptedNoteByTag(tagFlag)
+		if err != nil {
+			log.Fatalf("Error finding notes: %v", err)
+		}
 	}
 	if len(notes) == 0 {
 		log.Println("No notes available.")
 		return
 	}
 	model.SortNoteSlice(notes)
-	fmt.Printf("| %-5s | %-5s | %-25s | %-25s | %-25s |\n", "ID", "Type", "Title", "Creation time", "Slug")
+	fmt.Printf("| %-5s | %-5s | %-25s | %-25s | %-25s |\n", "Flags", "ID", "Title", "Creation time", "Slug")
 	var title string
 	for idx, note := range notes {
-		var noteType string
-		if note.IsFile {
-			noteType = "File"
-		} else {
-			noteType = "Text"
-		}
 		if len(note.Title) > 25 {
-			title = note.Title[:22] + "..."
+			title = note.Title[:24] + "..."
 		} else {
 			title = note.Title
 		}
-		fmt.Printf("| %-5s | %-5s | %-25s | %-25s | %-25s |\n", fmt.Sprintf("%d", idx+1), noteType, title, note.Time.Format("2006-01-02 15:04:05"), note.Slug())
+		fmt.Printf("| %-5s | %-5s | %-25s | %-25s | %-25s |\n", note.Flags(), fmt.Sprintf("%d", idx+1), title, note.Time.Format("2006-01-02 15:04:05"), note.Slug())
 	}
 }
 
@@ -450,7 +490,7 @@ func createNote(pathFlag string, cmdString []string, shredFlag bool) {
 
 // Sililar to createNote this function decrypts and writes a note to a temporary file
 // which then can be edited through the configured editor.
-func editNote(pathFlag, keyFlag, slugFlag string, idFlag int, editorCmd []string, shredFlag bool) {
+func editNote(pathFlag, keyFlag, slugFlag string, idFlag uint, editorCmd []string, shredFlag bool) {
 	var note *model.EncryptedNote
 	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
@@ -580,7 +620,7 @@ func getNote(pathFlag, keyFlag, slugFlag, fileFlag string, idFlag uint, rawFlag 
 			log.Fatalf("Could not load note by slug: %v", err)
 		}
 	} else if idFlag != 0 {
-		encryptedNote, err = db.GetEncryptedNoteByIndex(int(idFlag))
+		encryptedNote, err = db.GetEncryptedNoteByIndex(idFlag)
 		if err != nil {
 			log.Fatalf("Could not load note by id: %v", err)
 		}
@@ -636,7 +676,7 @@ func deleteNote(pathFlag, slugFlag string, idFlag uint) {
 	if len(slugFlag) > 0 {
 		err = db.DeleteNoteBySlug(slugFlag)
 	} else if idFlag > 0 {
-		note, err = db.GetEncryptedNoteByIndex(int(idFlag))
+		note, err = db.GetEncryptedNoteByIndex(idFlag)
 		if err != nil {
 			log.Fatalf("Couldn't get note by index: %v", err)
 		}
@@ -709,5 +749,49 @@ func addFile(pathFlag, fileFlag, titleFlag string) {
 	}
 	if err = db.SaveEncryptedNote(&encryptedNote); err != nil {
 		log.Fatalf("Error adding file to database: %v", err)
+	}
+}
+
+func manipulateTags(pathFlag string, idFlag uint, slugFlag, tagAddFlag, tagRemoveFlag string) {
+	db, err := aen.OpenDatabase(pathFlag, false)
+	if err != nil {
+		log.Fatalf("Error opening database: %v", err)
+	}
+	defer db.Close()
+
+	var note *model.EncryptedNote
+	if idFlag > 0 {
+		note, err = db.GetEncryptedNoteByIndex(idFlag)
+		if err != nil {
+			log.Fatalf("Note with id %d not available", idFlag)
+		}
+	} else if len(slugFlag) > 0 {
+		note, err = db.GetEncryptedNoteBySlug(slugFlag)
+		if err != nil {
+			log.Fatalf("Note with slug %s not available", slugFlag)
+		}
+	} else {
+		log.Fatalf("Either ID or Slug must be given.")
+	}
+
+	if len(tagAddFlag) > 0 {
+		tags := strings.Split(tagAddFlag, ",")
+		for i := range tags {
+			note.AddTag(strings.TrimSpace(tags[i]))
+		}
+	}
+	if len(tagRemoveFlag) > 0 {
+		tags := strings.Split(tagRemoveFlag, ",")
+		for i := range tags {
+			tag := strings.TrimSpace(tags[i])
+			err = note.RemoveTag(tag)
+			if err != nil {
+				log.Fatalf("Error while removing tag \"%s\": %v", tag, err)
+			}
+		}
+	}
+	err = db.SaveEncryptedNote(note)
+	if err != nil {
+		log.Fatalf("Error saving note: %v", err)
 	}
 }

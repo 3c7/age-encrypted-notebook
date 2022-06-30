@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -221,5 +222,23 @@ func TestBinaryNoteFromFile(t *testing.T) {
 		if bNote.Content[i] != content[i] {
 			t.Fatalf("content differs at position %d", i)
 		}
+	}
+}
+
+func TestTags(t *testing.T) {
+	en := model.EncryptedNote{
+		Tags: []string{},
+	}
+	en.AddTag("First")
+	en.AddTag("Second")
+	en.AddTag("Third")
+	err := en.RemoveTag("Second")
+	if err != nil {
+		t.Fatalf("Error removing tag: %v", err)
+	}
+
+	s := strings.Join(en.Tags, "-")
+	if s != "First-Third" {
+		t.Fatalf("Concatenated string should be First-Third, but was %s", s)
 	}
 }

@@ -144,11 +144,12 @@ func (note *Note) Encrypt(x25519recipients ...age.X25519Recipient) (ciphertext s
 func (note *Note) ToEncryptedNote(x25519recipients ...age.X25519Recipient) (encryptedNote EncryptedNote, err error) {
 	ciphertext, err := note.Encrypt(x25519recipients...)
 	return EncryptedNote{
-		note.Uuid,
-		note.Time,
-		note.Title,
-		ciphertext,
-		false,
+		Uuid:       note.Uuid,
+		Time:       note.Time,
+		Title:      note.Title,
+		Ciphertext: ciphertext,
+		IsFile:     false,
+		Tags:       []string{},
 	}, err
 }
 
@@ -184,11 +185,12 @@ func (bNote *FileNote) Encrypt(x25519recipients ...age.X25519Recipient) (ciphert
 func (bNote *FileNote) ToEncryptedNote(x25519recipients ...age.X25519Recipient) (encryptedNote EncryptedNote, err error) {
 	ciphertext, err := bNote.Encrypt(x25519recipients...)
 	return EncryptedNote{
-		bNote.Uuid,
-		bNote.Time,
-		bNote.Title,
-		ciphertext,
-		true,
+		Uuid:       bNote.Uuid,
+		Time:       bNote.Time,
+		Title:      bNote.Title,
+		Ciphertext: ciphertext,
+		IsFile:     true,
+		Tags:       []string{},
 	}, err
 }
 
@@ -197,7 +199,9 @@ type EncryptedNote struct {
 	Time       time.Time
 	Title      string
 	Ciphertext string
+	IsBinary   bool // deprecated
 	IsFile     bool
+	Tags       []string
 }
 
 func (encryptedNote *EncryptedNote) Slug() (slug string) {
@@ -210,6 +214,11 @@ func (encryptedNote *EncryptedNote) Slug() (slug string) {
 	slug = strings.ReplaceAll(slug, " ", "-")
 	slug = strings.ToLower(slug)
 	return slug
+}
+
+// In order to get rid of the "IsBinary" attribute this function can be used to read FileNotes from older databases
+func (encryptedNote *EncryptedNote) ContainsFile() bool {
+	return encryptedNote.IsBinary || encryptedNote.IsFile
 }
 
 func (encryptedNote EncryptedNote) Decrypt(identity age.Identity) (text string, err error) {
@@ -271,6 +280,36 @@ func (encryptedNote EncryptedNote) ToDecryptedFileNote(identity age.Identity) (b
 		},
 		content,
 	}, err
+}
+
+func (encryptedNote *EncryptedNote) Flags() (flags string) {
+	if encryptedNote.ContainsFile() {
+		flags += "F"
+	} else {
+		flags += "-"
+	}
+	if len(encryptedNote.Tags) > 0 {
+		flags += "T"
+	} else {
+		flags += "-"
+	}
+	return flags
+}
+
+func (encryptedNote *EncryptedNote) AddTag(t string) {
+	encryptedNote.Tags = append(encryptedNote.Tags, t)
+}
+
+func (encryptedNote *EncryptedNote) RemoveTag(t string) error {
+	for idx := range encryptedNote.Tags {
+		if encryptedNote.Tags[idx] == t {
+			tags := encryptedNote.Tags[:idx]
+			tags = append(tags, encryptedNote.Tags[idx+1:]...)
+			encryptedNote.Tags = tags
+			return nil
+		}
+	}
+	return errors.New("tag not found")
 }
 
 func (encryptedNote EncryptedNote) Json() (encodedNote []byte, err error) {

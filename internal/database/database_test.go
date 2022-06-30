@@ -198,3 +198,81 @@ func TestRemovingRecipients(t *testing.T) {
 		}
 	}
 }
+
+func TestGetNoteByTag(t *testing.T) {
+	file, err := ioutil.TempFile("", "notes.*.db")
+	if err != nil {
+		t.Errorf("Could not create temp file: %v", err)
+	}
+	defer os.Remove(file.Name())
+
+	DB := database.NewDatabaseInstance(file.Name())
+	if err := DB.Open(); err != nil {
+		t.Errorf("Could not open database: %v", err)
+	}
+	defer DB.Close()
+
+	id, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatalf("Could not generate identity: %v", err)
+	}
+
+	r1 := model.Recipient{
+		Alias:     "Test",
+		Publickey: id.Recipient().String(),
+	}
+
+	if err = DB.AddRecipient(r1); err != nil {
+		t.Fatalf("Could not add recipient: %v", err)
+	}
+
+	recipients, err := DB.GetAgeRecipients()
+	if err != nil {
+		t.Errorf("Error during loading recipients: %v", err)
+	}
+
+	n1 := model.NewNote("Title1", "Text1")
+	en1, err := n1.ToEncryptedNote(recipients...)
+	if err != nil {
+		t.Errorf("Error encrypting first note: %v", err)
+	}
+	n2 := model.NewNote("Title2", "Text2")
+	en2, err := n2.ToEncryptedNote(recipients...)
+	if err != nil {
+		t.Errorf("Error encrypting second note: %v", err)
+	}
+	en1.AddTag("tag1")
+	en2.AddTag("tag2")
+	if err = DB.SaveEncryptedNote(&en1); err != nil {
+		t.Errorf("Error saving note: %v", err)
+	}
+	if DB.SaveEncryptedNote(&en2); err != nil {
+		t.Errorf("Error saving note: %v", err)
+	}
+
+	result1, err := DB.GetEncryptedNoteByTag("tag1")
+	if err != nil {
+		t.Fatalf("Error receiving notes from db: %v", err)
+	}
+
+	result2, err := DB.GetEncryptedNoteByTag("tag2")
+	if err != nil {
+		t.Fatalf("Error receiving notes from db: %v", err)
+	}
+
+	if len(result1) != 1 {
+		t.Fatalf("Result set should be of lenght 1 but was %d", len(result1))
+	}
+
+	if len(result2) != 1 {
+		t.Fatalf("Result set should be of lenght 1 but was %d", len(result1))
+	}
+
+	if result1[0].Title != "Title1" {
+		t.Fatalf("Title should be %s but was %s", n1.Title, result1[0].Title)
+	}
+
+	if result2[0].Title != "Title2" {
+		t.Fatalf("Title should be %s but was %s", n2.Title, result2[0].Title)
+	}
+}

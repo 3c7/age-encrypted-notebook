@@ -117,6 +117,19 @@ func (db *Database) GetEncryptedNotes() (notes []model.EncryptedNote, err error)
 	return notes, err
 }
 
+func (db *Database) GetEncryptedNoteByTag(tag string) (notes []model.EncryptedNote, err error) {
+	allNotes, err := db.GetEncryptedNotes()
+	for i := range allNotes {
+		for j := range allNotes[i].Tags {
+			if allNotes[i].Tags[j] == tag {
+				notes = append(notes, allNotes[i])
+				break
+			}
+		}
+	}
+	return
+}
+
 func (db *Database) GetEncryptedNoteBySlug(slug string) (encryptedNote *model.EncryptedNote, err error) {
 	var note model.EncryptedNote
 	err = db.Handle.View(func(tx *bolt.Tx) error {
@@ -145,13 +158,13 @@ func (db *Database) DeleteNoteBySlug(slug string) (err error) {
 	return err
 }
 
-func (db *Database) GetEncryptedNoteByIndex(idx int) (encryptedNote *model.EncryptedNote, err error) {
+func (db *Database) GetEncryptedNoteByIndex(idx uint) (encryptedNote *model.EncryptedNote, err error) {
 	notes, err := db.GetEncryptedNotes()
 	if err != nil {
 		return nil, err
 	}
 
-	if len(notes) < idx {
+	if len(notes) < int(idx) {
 		return nil, errors.New("index is out of range")
 	}
 
