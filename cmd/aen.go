@@ -36,7 +36,7 @@ Subcommands:
   get         (g)   (-d|--db) <DB path> (-k|--key) <key path>
                     (-s|--slug) <slug> (-i|--id) <id> (-r|--raw)
   init        (in)  (-o|--output) <DB path> (-k|--key) <key path>
-  list        (ls)  (-d|--db) <DB path>
+  list        (ls)  (-d|--db) <DB path> (-t|--tag) <search tag> --show-tags
   recipients  (re)  (-d|--db) <DB path> (-r|--remove) <alias>
   remove      (rm)  (-d|--db) <DB path> (-s|--slug) <slug> (-i|--id) <id>
   tag         (t)   (-d|--db) <DB path> (-s|--slug) <slug> (-i|--id) <id>
@@ -87,6 +87,7 @@ aen init (in)          Initializes the private key and the database if not alrea
 aen list (ls)          Lists the slugs of available notes sorted by their timestamp
   -d, --db             - Path to DB *
   -t, --tag            - Only display notes with given tag
+  --show-tags          - Display tags
 
                        The following flags are used:
 
@@ -145,7 +146,7 @@ func main() {
 		pathEnv, keyEnv, editorEnv                                               string
 		editorCmd                                                                []string
 		idFlag                                                                   uint
-		briefFlag, shredFlag, rawFlag                                            bool
+		briefFlag, shredFlag, rawFlag, showTagsFlag                              bool
 	)
 
 	HelpCmd := flag.NewFlagSet("help", flag.ExitOnError)
@@ -165,6 +166,7 @@ func main() {
 	ListCmd.StringVar(&pathFlag, "d", "", "Path to database")
 	ListCmd.StringVar(&tagFlag, "tag", "", "Tag to filter for")
 	ListCmd.StringVar(&tagFlag, "t", "", "Tag to filter for")
+	ListCmd.BoolVar(&showTagsFlag, "show-tags", false, "Display tags")
 
 	WriteCmd := flag.NewFlagSet("write", flag.ExitOnError)
 	WriteCmd.StringVar(&pathFlag, "db", "", "Path to database")
@@ -278,7 +280,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error listing notes: %v", err)
 		}
-		listNotes(path, tagFlag)
+		listNotes(path, tagFlag, showTagsFlag)
 
 	case "write", "wr":
 		WriteCmd.Parse(os.Args[2:])
@@ -406,7 +408,7 @@ func initAen(path string, keyPath string, aliasFlag string) (err error) {
 }
 
 // List all notes available in the database and print them ordered by the creation time.
-func listNotes(pathFlag, tagFlag string) {
+func listNotes(pathFlag, tagFlag string, showTagsFlag bool) {
 	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
 		log.Fatalf("Error opening database file: %v", err)
@@ -430,7 +432,12 @@ func listNotes(pathFlag, tagFlag string) {
 		return
 	}
 	model.SortNoteSlice(notes)
-	fmt.Printf("| %-5s | %-5s | %-50s | %-25s |\n", "Flags", "ID", "Title", "Creation time")
+	headers := fmt.Sprintf("| %-5s | %-5s | %-50s |", "Flags", "ID", "Title")
+	if showTagsFlag {
+		headers += fmt.Sprintf(" %-25s |", "Tags")
+	}
+	headers += fmt.Sprintf(" %-25s |\n", "Creation time")
+	fmt.Print(headers)
 	var title string
 	for idx, note := range notes {
 		if len(note.Title) > 50 {
@@ -438,7 +445,13 @@ func listNotes(pathFlag, tagFlag string) {
 		} else {
 			title = note.Title
 		}
-		fmt.Printf("| %-5s | %-5s | %-50s | %-25s |\n", note.Flags(), fmt.Sprintf("%d", idx+1), title, note.Time.Format("2006-01-02 15:04:05"))
+		line := fmt.Sprintf("| %-5s | %-5s | %-50s |", note.Flags(), fmt.Sprintf("%d", idx+1), title)
+		if showTagsFlag {
+			tags := strings.Join(note.Tags, ", ")
+			line += fmt.Sprintf(" %-25s |", tags)
+		}
+		line += fmt.Sprintf(" %-25s |\n", note.Time.Format("2006-01-02 15:04:05"))
+		fmt.Print(line)
 	}
 }
 
