@@ -30,6 +30,7 @@ Subcommands:
   help        (?)   (-b|--brief)
 
   add         (a)   (-d|--db) <DB path> (-t|--title) <title> (-f|--file) <file path>
+  attach      (at)  (-d|--db) <DB path> (-f|--file) <file path> (-n|--name) <file name>
   create      (cr)  (-d|--db) <DB path> (-S|--shred)
   edit        (ed)  (-d|--db) <DB path> (-k|--key) <key path>
                     (-s|--slug) <slug> (-i|--id) <id> (-S|--shred)
@@ -57,6 +58,11 @@ aen add (a)            Adds a file to the database
   -d, --db             - Path to database
   -t, --title          - Title for the note, default is the filename
   -f, --file           - Path to the file which should be added to the DB
+
+aen attach (at)        Attach a file to a note
+  -d, --db             - Path to database
+  -f, --file           - Path to file
+  -n, --name           - Optional new filename
 
 aen create (cr)        Creates a new note with an editor using the first line of the created
                        note as title
@@ -668,6 +674,12 @@ func getNote(pathFlag, keyFlag, slugFlag, fileFlag string, idFlag uint, rawFlag 
 			fmt.Printf("Title: %s (%s)\n", note.Title, note.Uuid.String())
 			fmt.Printf("Created: %s\n", note.Time.Format("2006-01-02 15:04:05"))
 			fmt.Printf("Content:\n%s\n", note.Text)
+			if len(encryptedNote.Attachments) > 0 {
+				fmt.Println("Attachments:")
+				for i := range encryptedNote.Attachments {
+					fmt.Printf("  - %s\n", encryptedNote.Attachments[i].Filename)
+				}
+			}
 		}
 	}
 }

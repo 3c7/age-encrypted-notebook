@@ -75,7 +75,7 @@ func TestNoteEncryptionAndDecryption(t *testing.T) {
 		t.Errorf("Could not parse private key: %v", err)
 	}
 
-	exp, _, err := encryptedNote.Decrypt(identity)
+	exp, err := encryptedNote.Decrypt(identity)
 	if err != nil {
 		t.Errorf("Could not decrypt note: %v", err)
 	}
@@ -143,14 +143,14 @@ func TestEncryptionWithTwoRecipients(t *testing.T) {
 		t.Fatalf("could not encrypt note: %v", err)
 	}
 
-	noteText1, _, err := encryptedNote.Decrypt(i1)
+	noteText1, err := encryptedNote.Decrypt(i1)
 	if err != nil {
 		t.Fatalf("could not decrypt note: %v", err)
 	}
 	if noteText1 != content {
 		t.Fatalf("decrypted content should be %s but was %s", content, noteText1)
 	}
-	noteText2, _, err := encryptedNote.Decrypt(i2)
+	noteText2, err := encryptedNote.Decrypt(i2)
 	if err != nil {
 		t.Fatalf("could not decrypt note (2): %v", err)
 	}
@@ -280,7 +280,7 @@ func TestAttachment(t *testing.T) {
 
 func TestAttachmentEncryption(t *testing.T) {
 	note := model.NewNote("Title", "Note")
-	attachment := model.NewAttachment("attachment.txt", []byte("This is some data."))
+	attachment := model.NewAttachment("attachment.txt", []byte("This is some data.\n"))
 	note.Attachments = append(note.Attachments, attachment)
 
 	i1, err := age.ParseX25519Identity(key)
@@ -298,24 +298,16 @@ func TestAttachmentEncryption(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf(">>> DEBUG: Encrypted note: %s", string(j))
-	dec, err := enc.ToDecryptedNote(i1)
+	decryptedAttachment, err := enc.DecryptAttachment(0, i1)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Error during decrypting attachment: %v", err)
 	}
-
-	j2, err := json.Marshal(dec)
-	if err != nil {
-		t.Fatal(err)
+	if len(decryptedAttachment.Content) != len(attachment.Content) {
+		t.Fatalf("Attachment length mismatch: is %d but should be %d.", len(decryptedAttachment.Content), len(attachment.Content))
 	}
-	t.Logf(">>> DEBUG: Decrypted note: %s", string(j2))
-
-	if len(dec.Attachments[0].Content) != len(attachment.Content) {
-		t.Fatal("Content length mismatch")
-	}
-
-	for i := range dec.Attachments[0].Content {
-		if dec.Attachments[0].Content[i] != attachment.Content[i] {
-			t.Fatalf("Mismatch of content at pos %d.", i)
+	for i := range decryptedAttachment.Content {
+		if decryptedAttachment.Content[i] != attachment.Content[i] {
+			t.Fatalf("Content mismatch at position %d.", i)
 		}
 	}
 }

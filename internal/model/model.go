@@ -191,13 +191,15 @@ func (note *Note) Encrypt(x25519recipients ...age.X25519Recipient) (ciphertext s
 		if err != nil {
 			return "", nil, err
 		}
-		defer w.Close()
 
 		if err != nil {
 			return "", nil, err
 		}
 		if _, err := w.Write(currentAttachment.Content); err != nil {
-			return "", nil, err
+			return "", nil, fmt.Errorf("could not write data of attachment %d: %v", i, err)
+		}
+		if err = w.Close(); err != nil {
+			return "", nil, fmt.Errorf("could not close writer after encrypting attachment %d: %v", i, err)
 		}
 		encryptedAttachments = append(encryptedAttachments, EncryptedAttachment{
 			Filename:   currentAttachment.Filename,
@@ -302,50 +304,54 @@ func (encryptedNote *EncryptedNote) ContainsFile() bool {
 	return encryptedNote.IsBinary || encryptedNote.IsFile
 }
 
-func (encryptedNote EncryptedNote) Decrypt(identity age.Identity) (text string, attachments []Attachment, err error) {
+// Decrypt decrypts a notes text. For decrypting one of the possible attachments, DecryptAttachment must be called.
+func (encryptedNote EncryptedNote) Decrypt(identity age.Identity) (text string, err error) {
 	var decoded []byte
 	if decoded, err = base64.StdEncoding.DecodeString(encryptedNote.Ciphertext); err != nil {
 		log.Fatalf("Error decoding encrypted note's ciphertext: %v.", err)
 	}
 	r, err := age.Decrypt(bytes.NewReader(decoded), identity)
 	if err != nil {
-		return "", nil, err
+		return "", err
 	}
 	buffer := &bytes.Buffer{}
 	if n, err := buffer.ReadFrom(r); err != nil {
-		return "", nil, fmt.Errorf("error while after %d bytes from decryption reader: %v", n, err)
+		return "", fmt.Errorf("error while after %d bytes from decryption reader: %v", n, err)
 	}
 	text = buffer.String()
+	return text, nil
+}
 
-	// Loop through attachments
-	for i := range encryptedNote.Attachments {
-		currentAttachment := encryptedNote.Attachments[i]
-		decoded, err = base64.StdEncoding.DecodeString(currentAttachment.Ciphertext)
-		if err != nil {
-			return "", nil, fmt.Errorf("error decoding attachment %d: %v", i, err)
-		}
-		if len(decoded) == 0 && len(currentAttachment.Ciphertext) > 0 {
-			return "", nil, errors.New("decoded attachment is empty, but shouldn't")
-		}
-
-		r, err = age.Decrypt(bytes.NewReader(decoded), identity)
-		if err != nil {
-			return "", nil, fmt.Errorf("error decrypting attachment %d: %v", i, err)
-		}
-		buffer = &bytes.Buffer{}
-		if n, err := buffer.ReadFrom(r); err != nil {
-			return "", nil, fmt.Errorf("error after reading %d bytes from decryption reader of attachment %d: %v", n, i, err)
-		}
-		attachments = append(attachments, Attachment{
-			Filename: currentAttachment.Filename,
-			Md5:      currentAttachment.Md5,
-			Sha1:     currentAttachment.Sha1,
-			Sha256:   currentAttachment.Sha256,
-			Sha512:   currentAttachment.Sha512,
-			Content:  buffer.Bytes(),
-		})
+func (encryptedNote *EncryptedNote) DecryptAttachment(num int, identity age.Identity) (attachment Attachment, err error) {
+	if num > len(encryptedNote.Attachments) {
+		return Attachment{}, errors.New("attachment index out of range.")
 	}
-	return text, attachments, nil
+
+	encryptedAttachment := encryptedNote.Attachments[num]
+	decoded, err := base64.StdEncoding.DecodeString(encryptedAttachment.Ciphertext)
+	if err != nil {
+		return Attachment{}, fmt.Errorf("error decoding attachment: %v", err)
+	}
+	if len(decoded) == 0 && len(encryptedAttachment.Ciphertext) > 0 {
+		return Attachment{}, errors.New("decoded attachment is empty, but shouldn't")
+	}
+
+	r, err := age.Decrypt(bytes.NewReader(decoded), identity)
+	if err != nil {
+		return Attachment{}, fmt.Errorf("error decrypting attachment: %v", err)
+	}
+	buffer := &bytes.Buffer{}
+	if n, err := buffer.ReadFrom(r); err != nil {
+		return Attachment{}, fmt.Errorf("error after reading %d bytes from decryption reader of attachment: %v", n, err)
+	}
+	return Attachment{
+		Filename: encryptedAttachment.Filename,
+		Md5:      encryptedAttachment.Md5,
+		Sha1:     encryptedAttachment.Sha1,
+		Sha256:   encryptedAttachment.Sha256,
+		Sha512:   encryptedAttachment.Sha512,
+		Content:  buffer.Bytes(),
+	}, nil
 }
 
 func (encryptedNote EncryptedNote) DecryptContent(identity age.Identity) (content []byte, err error) {
@@ -368,13 +374,13 @@ func (encryptedNote EncryptedNote) ToDecryptedNote(identity age.Identity) (note 
 		return Note{}, errors.New("the given note contains a file, therefore ToDecryptedFileNote must be used")
 	}
 
-	text, attachments, err := encryptedNote.Decrypt(identity)
+	text, err := encryptedNote.Decrypt(identity)
 	return Note{
 		encryptedNote.Uuid,
 		encryptedNote.Time,
 		encryptedNote.Title,
 		text,
-		attachments,
+		nil,
 	}, err
 }
 
@@ -399,10 +405,11 @@ func (encryptedNote *EncryptedNote) Flags() (flags string) {
 	if encryptedNote.ContainsFile() {
 		flags += "F"
 	} else if len(encryptedNote.Attachments) > 0 {
-		flags += "A"
+		flags += fmt.Sprintf("A%d", len(encryptedNote.Attachments))
 	} else {
-		flags += "-"
+		flags += "--"
 	}
+
 	if len(encryptedNote.Tags) > 0 {
 		flags += "T"
 	} else {
