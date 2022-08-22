@@ -2,3 +2,4 @@ dist/*
 .vscode
 cmd/*.key
 cmd/*.db
+cmd/*.sh

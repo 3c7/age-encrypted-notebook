@@ -79,12 +79,12 @@ func NewNote(title string, text string) (note *Note) {
 	}
 }
 
-func NewAttachment(filename string, data []byte) (attachment Attachment) {
+func NewAttachment(filename string, data []byte) (attachment *Attachment) {
 	bMd5Hash := md5.Sum(data)
 	bSha1Hash := sha1.Sum(data)
 	bSha256Hash := sha256.Sum256(data)
 	bSha512Hash := sha512.Sum512(data)
-	return Attachment{
+	return &Attachment{
 		Filename: filename,
 		Md5:      hex.EncodeToString(bMd5Hash[:]),
 		Sha1:     hex.EncodeToString(bSha1Hash[:]),
@@ -92,6 +92,21 @@ func NewAttachment(filename string, data []byte) (attachment Attachment) {
 		Sha512:   hex.EncodeToString(bSha512Hash[:]),
 		Content:  data,
 	}
+}
+
+// NewAttachmentFromFile reads a file from the filesystem and returns a pointer to an Attachment struct
+func NewAttachmentFromFile(filename, filepath string) (attachment *Attachment, err error) {
+	_, err = os.Stat(filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := os.ReadFile(filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewAttachment(filename, data), nil
 }
 
 func NewFileNote(title string, content []byte) (note *FileNote) {
@@ -114,7 +129,7 @@ func (note *Note) Slug() (slug string) {
 	return slug
 }
 
-func (note *Note) AttachFile(filepath string) (err error) {
+func (note *Note) AttachFile(filepath, filename string) (err error) {
 	if _, err := os.Stat(filepath); err != nil {
 		return err
 	}
@@ -123,7 +138,10 @@ func (note *Note) AttachFile(filepath string) (err error) {
 	if err != nil {
 		return err
 	}
-	note.Attachments = append(note.Attachments, NewAttachment(gopath.Base(filepath), data))
+	if filename == "" {
+		filename = gopath.Base(filepath)
+	}
+	note.Attachments = append(note.Attachments, *NewAttachment(filename, data))
 	return nil
 }
 
@@ -191,10 +209,6 @@ func (note *Note) Encrypt(x25519recipients ...age.X25519Recipient) (ciphertext s
 		if err != nil {
 			return "", nil, err
 		}
-
-		if err != nil {
-			return "", nil, err
-		}
 		if _, err := w.Write(currentAttachment.Content); err != nil {
 			return "", nil, fmt.Errorf("could not write data of attachment %d: %v", i, err)
 		}
@@ -211,6 +225,34 @@ func (note *Note) Encrypt(x25519recipients ...age.X25519Recipient) (ciphertext s
 		})
 	}
 	return ciphertext, encryptedAttachments, nil
+}
+
+// Encrypt encrypts an attachment end returns a pointer to an EncryptedAttachment struct
+func (attachment *Attachment) Encrypt(x25519Recipients ...age.X25519Recipient) (encryptedAttachment *EncryptedAttachment, err error) {
+	encryptedAttachmentStruct := EncryptedAttachment{
+		Filename: attachment.Filename,
+		Md5:      attachment.Md5,
+		Sha1:     attachment.Sha1,
+		Sha256:   attachment.Sha256,
+		Sha512:   attachment.Sha512,
+	}
+	var recipients []age.Recipient
+	for i := range x25519Recipients {
+		recipients = append(recipients, &x25519Recipients[i])
+	}
+
+	out := &bytes.Buffer{}
+	w, err := age.Encrypt(out, recipients...)
+	if err != nil {
+		return nil, err
+	}
+	defer w.Close()
+
+	if _, err = w.Write(attachment.Content); err != nil {
+		return nil, err
+	}
+	encryptedAttachmentStruct.Ciphertext = base64.StdEncoding.EncodeToString(out.Bytes())
+	return &encryptedAttachmentStruct, nil
 }
 
 func (note *Note) ToEncryptedNote(x25519recipients ...age.X25519Recipient) (encryptedNote EncryptedNote, err error) {
@@ -403,7 +445,7 @@ func (encryptedNote EncryptedNote) ToDecryptedFileNote(identity age.Identity) (b
 
 func (encryptedNote *EncryptedNote) Flags() (flags string) {
 	if encryptedNote.ContainsFile() {
-		flags += "F"
+		flags += "F-"
 	} else if len(encryptedNote.Attachments) > 0 {
 		flags += fmt.Sprintf("A%d", len(encryptedNote.Attachments))
 	} else {
@@ -432,6 +474,17 @@ func (encryptedNote *EncryptedNote) RemoveTag(t string) error {
 		}
 	}
 	return errors.New("tag not found")
+}
+
+// CheckSha256Hash loops over all attachment's hashes and compares them to the given hash `h`.
+// It returns true, if the same hash was found, otherwise false
+func (encryptedNote *EncryptedNote) CheckSha256Hash(h string) (given bool, name string) {
+	for i := range encryptedNote.Attachments {
+		if encryptedNote.Attachments[i].Sha256 == h {
+			return true, encryptedNote.Attachments[i].Filename
+		}
+	}
+	return false, ""
 }
 
 func (encryptedNote EncryptedNote) Json() (encodedNote []byte, err error) {

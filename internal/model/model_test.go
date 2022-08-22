@@ -281,7 +281,7 @@ func TestAttachment(t *testing.T) {
 func TestAttachmentEncryption(t *testing.T) {
 	note := model.NewNote("Title", "Note")
 	attachment := model.NewAttachment("attachment.txt", []byte("This is some data.\n"))
-	note.Attachments = append(note.Attachments, attachment)
+	note.Attachments = append(note.Attachments, *attachment)
 
 	i1, err := age.ParseX25519Identity(key)
 	if err != nil {
