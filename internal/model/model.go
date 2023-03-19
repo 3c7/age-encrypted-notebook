@@ -106,6 +106,10 @@ func NewAttachmentFromFile(filename, filepath string) (attachment *Attachment, e
 		return nil, err
 	}
 
+	if filename == "" {
+		filename = gopath.Base(filepath)
+	}
+
 	return NewAttachment(filename, data), nil
 }
 

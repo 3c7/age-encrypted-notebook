@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -25,7 +24,7 @@ func createNote(pathFlag string, cmdString []string, shredFlag bool) {
 	}
 	db.Close()
 
-	tmpfile, err := ioutil.TempFile("", "note")
+	tmpfile, err := os.CreateTemp("", "note")
 	if err != nil {
 		log.Fatalf("Error creating temporary file: %v", err)
 	}
