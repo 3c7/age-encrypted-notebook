@@ -152,7 +152,7 @@ func main() {
 		pathEnv, keyEnv, editorEnv                                               string
 		editorCmd                                                                []string
 		idFlag                                                                   uint
-		briefFlag, shredFlag, rawFlag, showTagsFlag, createFlag                  bool
+		briefFlag, shredFlag, rawFlag, showTagsFlag, createFlag, allFlag         bool
 	)
 
 	AddCmd := flag.NewFlagSet("add", flag.ExitOnError)
@@ -226,6 +226,8 @@ func main() {
 	ListCmd.StringVar(&pathFlag, "d", "", "Path to database")
 	ListCmd.StringVar(&tagFlag, "tag", "", "Tag to filter for")
 	ListCmd.StringVar(&tagFlag, "t", "", "Tag to filter for")
+	ListCmd.BoolVar(&allFlag, "all", false, "Tag to filter for")
+	ListCmd.BoolVar(&allFlag, "a", false, "Tag to filter for")
 	ListCmd.BoolVar(&showTagsFlag, "show-tags", false, "Display tags")
 
 	RecipientsCmd := flag.NewFlagSet("recipients", flag.ExitOnError)
@@ -300,7 +302,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error listing notes: %v", err)
 		}
-		listNotes(path, tagFlag, showTagsFlag)
+		listNotes(path, tagFlag, showTagsFlag, allFlag)
 
 	case "write", "wr":
 		WriteCmd.Parse(os.Args[2:])

@@ -11,7 +11,7 @@ import (
 
 // listNotes lists all notes available in the database and print them ordered by the creation time.
 // Additional information, such as flags, are displayed.
-func listNotes(pathFlag, tagFlag string, showTagsFlag bool) {
+func listNotes(pathFlag, tagFlag string, showTagsFlag bool, allFlag bool) {
 	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
 		log.Fatalf("Error opening database file: %v", err)
@@ -43,8 +43,11 @@ func listNotes(pathFlag, tagFlag string, showTagsFlag bool) {
 	fmt.Print(headers)
 	var title string
 	for idx, note := range notes {
+		if !allFlag && idx == 10 {
+			break
+		}
 		if len(note.Title) > 50 {
-			title = note.Title[:49] + "..."
+			title = note.Title[:47] + "..."
 		} else {
 			title = note.Title
 		}
