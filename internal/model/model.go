@@ -161,8 +161,17 @@ func NotefileToNote(path string) (note *Note, err error) {
 	}
 
 	lines := strings.Split(string(content), "\n")
+	title := lines[0]
+	if len(title) > 2 {
+		if title[0] == '#' {
+			title = title[1:]
+		}
+		if title[0] == ' ' {
+			title = title[1:]
+		}
+	}
 	return &Note{
-		Title: lines[0],
+		Title: title,
 		Text:  strings.Join(lines[1:], "\n"),
 	}, nil
 }
@@ -279,6 +288,7 @@ func (note *Note) Json() (encodedNote []byte, err error) {
 // Writes note to a file in the format of Title\nText.
 func (note *Note) ToFile(path string) (err error) {
 	content := strings.Join([]string{note.Title, note.Text}, "\n")
+	content = "# " + content
 	return os.WriteFile(path, []byte(content), 0600)
 }
 
