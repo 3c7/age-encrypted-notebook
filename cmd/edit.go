@@ -12,8 +12,9 @@ import (
 )
 
 // editNode, sililar to createNote, decrypts and writes a note to a temporary file which then can be edited through the configured editor.
-func editNote(pathFlag, keyFlag, slugFlag string, idFlag uint, editorCmd []string, shredFlag bool) {
+func editNote(pathFlag, keyFlag, slugFlag string, idFlag uint, editorCmd []string, shredFlag bool, createFlag bool) {
 	var note *model.EncryptedNote
+	var decryptedNote model.Note
 	db, err := aen.OpenDatabase(pathFlag, false)
 	if err != nil {
 		log.Fatalf("Error opening database: %v", err)
@@ -21,9 +22,15 @@ func editNote(pathFlag, keyFlag, slugFlag string, idFlag uint, editorCmd []strin
 	defer db.Close()
 
 	if len(slugFlag) > 0 {
-		note, err = db.GetEncryptedNoteBySlug(slugFlag)
+		available, err := db.CheckSlug(slugFlag)
 		if err != nil {
-			log.Fatalf("Error receiving note %s from DB: %v", slugFlag, err)
+			log.Fatalf("Could not check for availability of slug %s: %v", slugFlag, err)
+		}
+		if available {
+			note, err = db.GetEncryptedNoteBySlug(slugFlag)
+			if err != nil {
+				log.Fatalf("Error receiving note %s from DB: %v", slugFlag, err)
+			}
 		}
 	} else if idFlag > 0 {
 		note, err = db.GetEncryptedNoteByIndex(idFlag)
@@ -34,18 +41,25 @@ func editNote(pathFlag, keyFlag, slugFlag string, idFlag uint, editorCmd []strin
 		log.Fatal("Error receiving note from DB: either slug or id must be given.")
 	}
 
-	if note.IsFile {
-		log.Fatalf("Editing binary notes is not implemented.")
-	}
-
 	identity, err := utils.IdentityFromKeyfile(keyFlag)
 	if err != nil {
 		log.Fatalf("Could not load private key: %v", err)
 	}
 
-	decryptedNote, err := note.ToDecryptedNote(identity)
-	if err != nil {
-		log.Fatalf("Could not decrypt note %s: %v", note.Slug(), err)
+	if note != nil {
+		if note.IsFile {
+			log.Fatalf("Editing binary notes is not implemented.")
+		}
+
+		decryptedNote, err = note.ToDecryptedNote(identity)
+		if err != nil {
+			log.Fatalf("Could not decrypt note %s: %v", note.Slug(), err)
+		}
+	} else if note == nil && createFlag {
+		decryptedNote = *model.NewNote("", "")
+		decryptedNote.Title = slugFlag
+	} else {
+		log.Fatalf("Note with slug %s not found.", slugFlag)
 	}
 
 	file, err := os.CreateTemp("", "note")
@@ -71,9 +85,9 @@ func editNote(pathFlag, keyFlag, slugFlag string, idFlag uint, editorCmd []strin
 		log.Fatalf("Error reading note from file %s: %v", file.Name(), err)
 	}
 
-	newNote.Uuid = note.Uuid
+	newNote.Uuid = decryptedNote.Uuid
 	newNote.Time = time.Now()
-	if newNote.Slug() != note.Slug() {
+	if newNote.Slug() != decryptedNote.Slug() {
 		err = db.DeleteNoteBySlug(note.Slug())
 		if err != nil {
 			log.Fatalf("Could not delete old note by slug %s: %v", note.Slug(), err)

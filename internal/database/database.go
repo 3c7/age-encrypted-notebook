@@ -109,7 +109,9 @@ func (db *Database) GetEncryptedNotes() (notes []model.EncryptedNote, err error)
 			if err != nil {
 				return err
 			}
-			notes = append(notes, note)
+			if note.Title != "quicknote" {
+				notes = append(notes, note)
+			}
 			return nil
 		})
 		return nil
@@ -130,12 +132,31 @@ func (db *Database) GetEncryptedNoteByTag(tag string) (notes []model.EncryptedNo
 	return
 }
 
+func (db *Database) CheckSlug(slug string) (available bool, err error) {
+	err = db.Handle.View(func(tx *bolt.Tx) error {
+		buf, err := db.readFromBucket(tx, []byte("notes"), []byte(slug))
+		if err != nil {
+			return err
+		}
+		if buf != nil {
+			available = true
+		} else {
+			available = false
+		}
+		return err
+	})
+	return available, err
+}
+
 func (db *Database) GetEncryptedNoteBySlug(slug string) (encryptedNote *model.EncryptedNote, err error) {
 	var note model.EncryptedNote
 	err = db.Handle.View(func(tx *bolt.Tx) error {
 		buf, err := db.readFromBucket(tx, []byte("notes"), []byte(slug))
 		if err != nil {
 			return err
+		}
+		if buf == nil {
+			return fmt.Errorf("note with slug %s not available", slug)
 		}
 		err = json.Unmarshal(buf, &note)
 		return err

@@ -25,11 +25,12 @@ Subcommands:
   attach      (at)  (-d|--db) <DB path> (-f|--file) <file path> (-n|--name) <file name>
   create      (cr)  (-d|--db) <DB path> (-S|--shred)
   edit        (ed)  (-d|--db) <DB path> (-k|--key) <key path>
-                    (-s|--slug) <slug> (-i|--id) <id> (-S|--shred)
+                    (-s|--slug) <slug> (-i|--id) <id> (-S|--shred) (-c|--create)
   get         (g)   (-d|--db) <DB path> (-k|--key) <key path>
                     (-s|--slug) <slug> (-i|--id) <id> (-r|--raw)
   init        (in)  (-o|--output) <DB path> (-k|--key) <key path>
   list        (ls)  (-d|--db) <DB path> (-t|--tag) <search tag> --show-tags
+  quick       (q)   (-d|--db) <DB path> (-k|--key) <key path>
   recipients  (re)  (-d|--db) <DB path> (-r|--remove) <alias>
   remove      (rm)  (-d|--db) <DB path> (-s|--slug) <slug> (-i|--id) <id>
   tag         (t)   (-d|--db) <DB path> (-s|--slug) <slug> (-i|--id) <id>
@@ -70,6 +71,7 @@ aen edit (ed)          Edits a note given by slug or id
   -s, --slug           - Slug of note to get
   -i, --id             - ID of note to get
   -S, --shred          - Overwrites temporary file with random data
+  -c, --create         - Create note if not available
 
 aen get (g)            Get and decrypt a note by its slug or id
   -d, --db             - Path to DB *
@@ -93,6 +95,10 @@ aen list (ls)          Lists the slugs of available notes sorted by their timest
 					   F - File
 					   T - Tags
 					   A - Attachments
+
+aen quick (q)          Opens the quick note (slug "quicknote"), shreds file on disk per default.
+  -d, --db             - Path to DB *
+  -k, --key            - Path to age keyfile *
 
 aen recipients (re)    Lists all recipients and their aliases
   -d, --db             - Path to DB *
@@ -146,7 +152,7 @@ func main() {
 		pathEnv, keyEnv, editorEnv                                               string
 		editorCmd                                                                []string
 		idFlag                                                                   uint
-		briefFlag, shredFlag, rawFlag, showTagsFlag                              bool
+		briefFlag, shredFlag, rawFlag, showTagsFlag, createFlag                  bool
 	)
 
 	AddCmd := flag.NewFlagSet("add", flag.ExitOnError)
@@ -186,6 +192,8 @@ func main() {
 	EditCmd.UintVar(&idFlag, "i", 0, "ID for note")
 	EditCmd.BoolVar(&shredFlag, "shred", false, "Shred file contents afterwards")
 	EditCmd.BoolVar(&shredFlag, "S", false, "Shred file contents afterwards")
+	EditCmd.BoolVar(&createFlag, "create", false, "Create note if not available")
+	EditCmd.BoolVar(&createFlag, "c", false, "Create note if not available")
 
 	GetCmd := flag.NewFlagSet("get", flag.ExitOnError)
 	GetCmd.StringVar(&pathFlag, "db", "", "Path to database")
@@ -348,7 +356,17 @@ func main() {
 		if err != nil {
 			log.Fatalf("Error editing note: %v", err)
 		}
-		editNote(path, key, slugFlag, idFlag, editorCmd, shredFlag)
+		editNote(path, key, slugFlag, idFlag, editorCmd, shredFlag, createFlag)
+
+	// Opening a quicknote does basically the same as the edit command with the slug set to quicknote.
+	// This is only helpful if the params have been set via ENVs, otherwise this doesn't bring more convenience to the user.
+	case "quick", "q":
+		EditCmd.Parse(os.Args[2:])
+		path, key, err := utils.GetPaths(pathFlag, pathEnv, keyFlag, keyEnv, true)
+		if err != nil {
+			log.Fatalf("Error editing note: %v", err)
+		}
+		editNote(path, key, "quicknote", idFlag, editorCmd, true, true)
 
 	case "remove", "del", "rm":
 		RmCmd.Parse(os.Args[2:])
