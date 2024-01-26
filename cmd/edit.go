@@ -62,7 +62,7 @@ func editNote(pathFlag, keyFlag, slugFlag string, idFlag uint, editorCmd []strin
 		log.Fatalf("Note with slug %s not found.", slugFlag)
 	}
 
-	file, err := os.CreateTemp("", "note")
+	file, err := os.CreateTemp("", "note*.md")
 	if err != nil {
 		log.Fatalf("Error creating temporary file: %v", err)
 	}
