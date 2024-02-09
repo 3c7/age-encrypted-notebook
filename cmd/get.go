@@ -43,7 +43,7 @@ func getNote(pathFlag, keyFlag, slugFlag, fileFlag string, idFlag uint, rawFlag 
 			log.Fatalf("Could not decrypt note: %v", err)
 		}
 
-		if fileFlag == "" {
+		if fileFlag != "" {
 			filename = fileFlag
 		} else {
 			filename = fNote.Title
@@ -52,7 +52,7 @@ func getNote(pathFlag, keyFlag, slugFlag, fileFlag string, idFlag uint, rawFlag 
 		if err = os.WriteFile(filename, fNote.Content, 0600); err != nil {
 			log.Fatalf("Error writing file: %v", err)
 		}
-		log.Printf("Written file to %s.", fileFlag)
+		log.Printf("Written file to \"%s\".", filename)
 	} else {
 		note, err := encryptedNote.ToDecryptedNote(identity)
 		if err != nil {
