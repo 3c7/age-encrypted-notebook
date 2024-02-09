@@ -1,9 +1,16 @@
 package model_test
 
 import (
+	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,6 +55,13 @@ func TestNoteEncryptionAndDecryption(t *testing.T) {
 	encryptedNote, err := note.ToEncryptedNote(*recipient)
 	if err != nil {
 		t.Errorf("Could not encrypt note: %v", err)
+	}
+	ciphertext, err := base64.StdEncoding.DecodeString(encryptedNote.Ciphertext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(ciphertext) == message {
+		t.Fatal("Message is not encrypted, just encoded.")
 	}
 	noteJson, err = encryptedNote.Json()
 	if err != nil {
@@ -220,6 +234,80 @@ func TestBinaryNoteFromFile(t *testing.T) {
 	for i := range bNote.Content {
 		if bNote.Content[i] != content[i] {
 			t.Fatalf("content differs at position %d", i)
+		}
+	}
+}
+
+func TestTags(t *testing.T) {
+	en := model.EncryptedNote{
+		Tags: []string{},
+	}
+	en.AddTag("First")
+	en.AddTag("Second")
+	en.AddTag("Third")
+	err := en.RemoveTag("Second")
+	if err != nil {
+		t.Fatalf("Error removing tag: %v", err)
+	}
+
+	s := strings.Join(en.Tags, "-")
+	if s != "First-Third" {
+		t.Fatalf("Concatenated string should be First-Third, but was %s", s)
+	}
+}
+
+func TestAttachment(t *testing.T) {
+	data := []byte("This is some data.")
+	md5 := md5.Sum(data)
+	sha1 := sha1.Sum(data)
+	sha256 := sha256.Sum256(data)
+	sha512 := sha512.Sum512(data)
+	attachment := model.NewAttachment("data.txt", data)
+
+	if attachment.Md5 != hex.EncodeToString(md5[:]) {
+		t.Fatal("MD5 mismatch")
+	}
+	if attachment.Sha1 != hex.EncodeToString(sha1[:]) {
+		t.Fatal("SHA1 mismatch")
+	}
+	if attachment.Sha256 != hex.EncodeToString(sha256[:]) {
+		t.Fatal("SHA256 mismatch")
+	}
+	if attachment.Sha512 != hex.EncodeToString(sha512[:]) {
+		t.Fatal("SHA512 mismatch")
+	}
+}
+
+func TestAttachmentEncryption(t *testing.T) {
+	note := model.NewNote("Title", "Note")
+	attachment := model.NewAttachment("attachment.txt", []byte("This is some data.\n"))
+	note.Attachments = append(note.Attachments, *attachment)
+
+	i1, err := age.ParseX25519Identity(key)
+	if err != nil {
+		t.Fatalf("Could not parse identity: %v", err)
+	}
+	r1 := i1.Recipient()
+
+	enc, err := note.ToEncryptedNote(*r1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, err := enc.Json()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf(">>> DEBUG: Encrypted note: %s", string(j))
+	decryptedAttachment, err := enc.DecryptAttachment(0, i1)
+	if err != nil {
+		t.Fatalf("Error during decrypting attachment: %v", err)
+	}
+	if len(decryptedAttachment.Content) != len(attachment.Content) {
+		t.Fatalf("Attachment length mismatch: is %d but should be %d.", len(decryptedAttachment.Content), len(attachment.Content))
+	}
+	for i := range decryptedAttachment.Content {
+		if decryptedAttachment.Content[i] != attachment.Content[i] {
+			t.Fatalf("Content mismatch at position %d.", i)
 		}
 	}
 }

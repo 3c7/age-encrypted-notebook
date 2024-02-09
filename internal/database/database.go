@@ -109,12 +109,43 @@ func (db *Database) GetEncryptedNotes() (notes []model.EncryptedNote, err error)
 			if err != nil {
 				return err
 			}
-			notes = append(notes, note)
+			if note.Title != "quicknote" {
+				notes = append(notes, note)
+			}
 			return nil
 		})
 		return nil
 	})
 	return notes, err
+}
+
+func (db *Database) GetEncryptedNoteByTag(tag string) (notes []model.EncryptedNote, err error) {
+	allNotes, err := db.GetEncryptedNotes()
+	for i := range allNotes {
+		for j := range allNotes[i].Tags {
+			if allNotes[i].Tags[j] == tag {
+				notes = append(notes, allNotes[i])
+				break
+			}
+		}
+	}
+	return
+}
+
+func (db *Database) CheckSlug(slug string) (available bool, err error) {
+	err = db.Handle.View(func(tx *bolt.Tx) error {
+		buf, err := db.readFromBucket(tx, []byte("notes"), []byte(slug))
+		if err != nil {
+			return err
+		}
+		if buf != nil {
+			available = true
+		} else {
+			available = false
+		}
+		return err
+	})
+	return available, err
 }
 
 func (db *Database) GetEncryptedNoteBySlug(slug string) (encryptedNote *model.EncryptedNote, err error) {
@@ -123,6 +154,9 @@ func (db *Database) GetEncryptedNoteBySlug(slug string) (encryptedNote *model.En
 		buf, err := db.readFromBucket(tx, []byte("notes"), []byte(slug))
 		if err != nil {
 			return err
+		}
+		if buf == nil {
+			return fmt.Errorf("note with slug %s not available", slug)
 		}
 		err = json.Unmarshal(buf, &note)
 		return err
@@ -145,13 +179,13 @@ func (db *Database) DeleteNoteBySlug(slug string) (err error) {
 	return err
 }
 
-func (db *Database) GetEncryptedNoteByIndex(idx int) (encryptedNote *model.EncryptedNote, err error) {
+func (db *Database) GetEncryptedNoteByIndex(idx uint) (encryptedNote *model.EncryptedNote, err error) {
 	notes, err := db.GetEncryptedNotes()
 	if err != nil {
 		return nil, err
 	}
 
-	if len(notes) < idx {
+	if len(notes) < int(idx) {
 		return nil, errors.New("index is out of range")
 	}
 
